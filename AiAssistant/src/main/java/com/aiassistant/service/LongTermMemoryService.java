@@ -52,11 +52,14 @@ public class LongTermMemoryService {
         try {
             Path indexFile = Paths.get(basePath).resolve(MEMORY_INDEX_FILE);
             if (!Files.exists(indexFile)) {
+                log.info("[记忆载入] 记忆索引文件不存在, userId={}", userId);
                 return memories;
             }
 
             String indexContent = Files.readString(indexFile, StandardCharsets.UTF_8);
             List<String> memoryFileNames = parseIndexFile(indexContent, userId);
+            
+            log.info("[记忆载入] 找到{}个记忆文件, userId={}", memoryFileNames.size(), userId);
 
             for (String fileName : memoryFileNames) {
                 Path memoryFile = Paths.get(basePath).resolve(fileName);
@@ -71,14 +74,15 @@ public class LongTermMemoryService {
                             memories.add(entry);
                         }
                     } catch (JsonProcessingException e) {
-                        log.warn("解析记忆文件失败: {}", fileName);
+                        log.warn("[记忆载入] 解析记忆文件失败: {}", fileName);
                     }
                 }
             }
 
             memories.sort(Comparator.comparing(MemoryEntry::getCreatedAt).reversed());
+            log.info("[记忆载入] 成功加载{}条记忆, userId={}", memories.size(), userId);
         } catch (IOException e) {
-            log.error("加载记忆失败", e);
+            log.error("[记忆载入] 加载记忆失败, userId={}", userId, e);
         }
 
         return memories;
@@ -98,31 +102,30 @@ public class LongTermMemoryService {
         List<MemoryEntry> memories = new ArrayList<>();
         
         String[] lines = conversation.split("\n");
-        StringBuilder currentTopic = new StringBuilder();
         
         for (String line : lines) {
             if (line.contains("偏好") || line.contains("喜欢") || line.contains("习惯") || 
-                line.contains("需求") || line.contains("目标")) {
+                line.contains("需求") || line.contains("目标") || line.contains("希望") ||
+                line.contains("想要") || line.contains("需要")) {
                 MemoryEntry preference = new MemoryEntry();
                 preference.setUserId(userId);
                 preference.setType("preference");
                 preference.setContent(line.trim());
                 preference.setCreatedAt(LocalDateTime.now());
                 memories.add(preference);
+                log.info("[记忆记录] 提取用户偏好: userId={}, content={}", userId, line.trim());
             }
             
-            if (line.contains("工单") || line.contains("任务") || line.contains("问题")) {
-                currentTopic.append(line).append("\n");
+            if (line.contains("身份") || line.contains("角色") || line.contains("工号") ||
+                line.contains("部门") || line.contains("公司") || line.contains("职位")) {
+                MemoryEntry identity = new MemoryEntry();
+                identity.setUserId(userId);
+                identity.setType("identity");
+                identity.setContent(line.trim());
+                identity.setCreatedAt(LocalDateTime.now());
+                memories.add(identity);
+                log.info("[记忆记录] 提取用户身份: userId={}, content={}", userId, line.trim());
             }
-        }
-        
-        if (currentTopic.length() > 0) {
-            MemoryEntry topic = new MemoryEntry();
-            topic.setUserId(userId);
-            topic.setType("topic");
-            topic.setContent(currentTopic.toString().trim());
-            topic.setCreatedAt(LocalDateTime.now());
-            memories.add(topic);
         }
 
         return memories;

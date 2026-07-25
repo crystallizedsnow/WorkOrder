@@ -88,9 +88,6 @@ public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Departm
         String departmentCode = OrganizationCodeUtils.generateDepartmentCode(company.getCode(), departmentCount);
         department.setCode(departmentCode);
         department.setName(param.getName());
-        ;
-        department.setCreateTime(formatter.format(LocalDateTime.now()));
-        department.setUpdateTime(formatter.format(LocalDateTime.now()));
         departmentMapper.insert(department);
 
         // 6. 返回结果

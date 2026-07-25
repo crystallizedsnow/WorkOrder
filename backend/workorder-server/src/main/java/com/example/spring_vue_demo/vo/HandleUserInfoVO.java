@@ -5,6 +5,8 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 /**
  * @author wtt
  * @date 2025/06/01
@@ -49,13 +51,13 @@ public class HandleUserInfoVO {
     private String departmentName;
 
     @Schema(description = "操作时间")
-    private String handleTime;
+    private LocalDateTime handleTime;
 
     @Schema(description = "创建时间")
-    private String createTime;
+    private LocalDateTime createTime;
 
     @Schema(description = "更新时间")
-    private String updateTime;
+    private LocalDateTime updateTime;
 
     @Schema(description = "操作备注")
     private String remark;

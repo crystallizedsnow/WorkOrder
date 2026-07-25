@@ -68,8 +68,6 @@ public class CompanyServiceImpl extends ServiceImpl<CompanyMapper, Company> impl
         }
 
         company.setCode(code);
-        company.setCreateTime(formatter.format(LocalDateTime.now()));
-        company.setUpdateTime(formatter.format(LocalDateTime.now()));
         boolean isSaved = this.save(company);
         if(isSaved){
             AddCompanyVO addCompanyVO = new AddCompanyVO();

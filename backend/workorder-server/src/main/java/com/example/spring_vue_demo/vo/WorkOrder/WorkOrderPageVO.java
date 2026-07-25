@@ -5,6 +5,7 @@ import com.example.spring_vue_demo.vo.HandleUserInfoVO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -57,17 +58,17 @@ public class WorkOrderPageVO {
     private String statusDesc;
 
     @Schema(description = "创建时间")
-    private String createTime;
+    private LocalDateTime createTime;
 
     @Schema(description = "更新时间")
-    private String updateTime;
+    private LocalDateTime updateTime;
 
     @Schema(description = "取消时间")
-    private String cancelTime;
+    private LocalDateTime cancelTime;
 
     @Schema(description = "删除时间")
-    private String deleteTime;
+    private LocalDateTime deleteTime;
 
     @Schema(description = "截止时间")
-    private String deadlineTime;
+    private LocalDateTime deadlineTime;
 }

@@ -9,11 +9,11 @@ create table work_order(
     priority_level tinyint comment '优先级',
     status int not null comment '状态',
     flow_id bigint not null comment '流程id',
-    create_time bigint not null comment '创建时间',
-    update_time bigint comment '更新时间',
-    cancel_time  bigint comment '取消时间',
-    delete_time  bigint comment '删除时间',
-    deadline_time bigint comment '截止时间',
+    create_time datetime not null default CURRENT_TIMESTAMP comment '创建时间',
+    update_time datetime default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP comment '更新时间',
+    cancel_time datetime comment '取消时间',
+    delete_time datetime comment '删除时间',
+    deadline_time datetime comment '截止时间',
     content text comment '详情',
     accessory_url varchar(128) comment '附件url',
     accessory_name varchar(128) comment '附件名称',
@@ -29,7 +29,7 @@ create table message(
    sender_id bigint NOT NULL comment '发送人id',
    type int NOT NULL comment '类型，',
    content text not null comment '内容',
-   send_time bigint comment '发送时间',
+   send_time datetime comment '发送时间',
    deleted tinyint not null DEFAULT 0 comment '删除位'
 ) comment '消息';
 
@@ -45,9 +45,9 @@ create table handle_user_info(
     company_name varchar(128) NOT NULL COMMENT '公司名',
     department_code varchar(64)  NOT NULL COMMENT '部门id',
     department_name varchar(128) NOT NULL COMMENT '部门名',
-    handle_time bigint comment '处理时间',
-    create_time bigint NOT NULL comment '创建时间',
-    update_time bigint comment '修改时间',
+    handle_time datetime comment '处理时间',
+    create_time datetime NOT NULL default CURRENT_TIMESTAMP comment '创建时间',
+    update_time datetime default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP comment '修改时间',
     remark varchar(255) comment '备注',
     deleted tinyint not null DEFAULT 0 comment '删除位'
 )comment '工单操作信息';
@@ -59,8 +59,8 @@ CREATE TABLE company (
                          code VARCHAR(50) UNIQUE COMMENT '公司编码',
                          parent_company_code VARCHAR(50) DEFAULT NULL COMMENT '上级公司编码',
                          level TINYINT DEFAULT 1 COMMENT '公司层级（1：总部，2：省公司，3：市公司）',
-                         create_time bigint COMMENT '创建时间',
-                         update_time bigint COMMENT '修改时间'
+                         create_time datetime default CURRENT_TIMESTAMP COMMENT '创建时间',
+                         update_time datetime default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间'
 ) COMMENT='公司信息表';
 
 drop table if exists department;
@@ -71,9 +71,10 @@ CREATE TABLE department (
                             parent_department_code VARCHAR(50) DEFAULT NULL COMMENT '上级部门ID(null表示顶级）',
                             company_code VARCHAR(50) NOT NULL COMMENT '所属公司编码',
                             leader_number VARCHAR(50) DEFAULT NULL COMMENT '部门主管员工工号',
-                            create_time bigint COMMENT '创建时间',
-                            update_time bigint COMMENT '修改时间'
+                            create_time datetime default CURRENT_TIMESTAMP COMMENT '创建时间',
+                            update_time datetime default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间'
 ) COMMENT='部门信息表';
+
 drop table if exists flow;
 CREATE TABLE flow (
                        id bigint primary key NOT NULL AUTO_INCREMENT comment 'id',
@@ -86,8 +87,8 @@ CREATE TABLE flow (
                        head_flow_id bigint comment '头节点id(只有审核有)',
                        next_flow_id bigint comment '下一节点id(只有审核有)',
                        is_last_node tinyint DEFAULT '0' COMMENT '是否为该流程终止节点',
-                       create_time bigint NOT NULL COMMENT '创建时间',
-                       update_time bigint COMMENT '更新时间'
+                       create_time datetime NOT NULL default CURRENT_TIMESTAMP COMMENT '创建时间',
+                       update_time datetime default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) COMMENT='工单流程定义表';
 
 drop table if exists staff;
@@ -106,8 +107,9 @@ CREATE TABLE staff (
                        manager_name VARCHAR(100) COMMENT '直属领导姓名',
                        phone VARCHAR(20) UNIQUE  COMMENT '手机号码',
                        email VARCHAR(100)  UNIQUE COMMENT '邮箱',
-                       create_time bigint COMMENT '创建时间',
-                       update_time bigint COMMENT '修改时间'
+                       create_time datetime default CURRENT_TIMESTAMP COMMENT '创建时间',
+                       update_time datetime default CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间'
 ) COMMENT='职工表';
 ALTER TABLE staff ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user';
+
 

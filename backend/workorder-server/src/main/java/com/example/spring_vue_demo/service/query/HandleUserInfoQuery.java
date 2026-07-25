@@ -12,6 +12,7 @@ import com.example.spring_vue_demo.param.HandleUserInfoParam;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author wtt
@@ -46,10 +47,9 @@ public class HandleUserInfoQuery {
     }
 
     public static LambdaUpdateWrapper<HandleUserInfo> getUpdateStatusWrapper(Long orderId, List<Long> staffIds, Integer handleType
-            , Boolean finished, Long handleTime, String remark) {
+            , Boolean finished, LocalDateTime handleTime, String remark) {
         LambdaUpdateWrapper<HandleUserInfo> wrapper = new LambdaUpdateWrapper<HandleUserInfo>();
         if (CollectionUtils.isEmpty(staffIds)) {
-            // 添加一个不可能满足的条件
             wrapper.apply("1=0");
             return wrapper;
         }
@@ -87,19 +87,19 @@ public class HandleUserInfoQuery {
     }
 
 
-    public static LambdaQueryWrapper<WorkOrder> getByStatusAndDeadlineTime(Long nowTime, List<Integer> status) {
+    public static LambdaQueryWrapper<WorkOrder> getByStatusAndDeadlineTime(LocalDateTime nowTime, List<Integer> status) {
         LambdaQueryWrapper<WorkOrder> wrapper = new LambdaQueryWrapper<WorkOrder>()
-                .le(true, WorkOrder::getDeadlineTime, nowTime)
+                .le(Objects.nonNull(nowTime), WorkOrder::getDeadlineTime, nowTime)
                 .in(true, WorkOrder::getStatus, status);
         return wrapper;
     }
 
-    public static LambdaQueryWrapper<HandleUserInfo> getByHandleDate(Long weekAgo, Long today) {
+    public static LambdaQueryWrapper<HandleUserInfo> getByHandleDate(LocalDateTime weekAgo, LocalDateTime today) {
         LambdaQueryWrapper<HandleUserInfo> wrapper = new LambdaQueryWrapper<HandleUserInfo>()
-                .ge(true,HandleUserInfo::getCreateTime,weekAgo)
-                .le(true,HandleUserInfo::getCreateTime,today)
+                .ge(Objects.nonNull(weekAgo),HandleUserInfo::getCreateTime,weekAgo)
+                .le(Objects.nonNull(today),HandleUserInfo::getCreateTime,today)
                 .or()
-                .le(true,HandleUserInfo::getHandleTime,today)
+                .le(Objects.nonNull(today),HandleUserInfo::getHandleTime,today)
                 .eq(HandleUserInfo::getHandleType,HandleUserInfoHandleTypeEnum.HANDLE.getValue());
         return wrapper;
     }

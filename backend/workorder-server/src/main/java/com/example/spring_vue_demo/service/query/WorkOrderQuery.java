@@ -11,6 +11,7 @@ import com.example.spring_vue_demo.exception.UserSideException;
 import com.example.spring_vue_demo.param.WorkOrder.WorkOrderPageParam;
 import io.micrometer.common.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 
@@ -56,7 +57,7 @@ public class WorkOrderQuery {
     }
 
 
-    public static LambdaQueryWrapper<WorkOrder> getByDateStatus(List<Integer> statusList, Long createTimeTo, Long createTimeFrom) {
+    public static LambdaQueryWrapper<WorkOrder> getByDateStatus(List<Integer> statusList, LocalDateTime createTimeTo, LocalDateTime createTimeFrom) {
         LambdaQueryWrapper<WorkOrder>wrapper=new LambdaQueryWrapper<WorkOrder>()
                 .in(CollectionUtils.isNotEmpty(statusList),WorkOrder::getStatus,statusList)
                 .le(Objects.nonNull(createTimeTo),WorkOrder::getCreateTime,createTimeTo)
@@ -74,20 +75,20 @@ public class WorkOrderQuery {
         return wrapper;
     }
 
-    public static QueryWrapper<WorkOrder> getCountGroupByStatusByDate(Long createTimeFrom, Long createTimeTo) {
+    public static QueryWrapper<WorkOrder> getCountGroupByStatusByDate(LocalDateTime createTimeFrom, LocalDateTime createTimeTo) {
         QueryWrapper<WorkOrder>wrapper=new QueryWrapper<WorkOrder>()
                 .select("status","COUNT(*) as count")
-                .ge(true,"create_time", createTimeFrom)
-                .le(true,"create_time",createTimeTo)
+                .ge(Objects.nonNull(createTimeFrom),"create_time", createTimeFrom)
+                .le(Objects.nonNull(createTimeTo),"create_time",createTimeTo)
                 .groupBy("status");
         return wrapper;
     }
 
-    public static QueryWrapper<WorkOrder> getCountGroupByTypeByDate(Long createTimeFrom, Long createTimeTo) {
+    public static QueryWrapper<WorkOrder> getCountGroupByTypeByDate(LocalDateTime createTimeFrom, LocalDateTime createTimeTo) {
         QueryWrapper<WorkOrder>wrapper=new QueryWrapper<WorkOrder>()
                 .select("type","COUNT(*) as count")
-                .ge(true,"create_time", createTimeFrom)
-                .le(true,"create_time",createTimeTo)
+                .ge(Objects.nonNull(createTimeFrom),"create_time", createTimeFrom)
+                .le(Objects.nonNull(createTimeTo),"create_time",createTimeTo)
                 .groupBy("type");
         return wrapper;
     }

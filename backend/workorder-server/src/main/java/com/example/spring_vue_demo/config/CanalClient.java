@@ -168,7 +168,7 @@ public class CanalClient {
                     workOrder.setContent(column.getValue());
                     break;
                 case "create_time":
-                    workOrder.setCreateTime(column.getValue());
+                    workOrder.setCreateTime(LocalDateTime.parse(column.getValue(), DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
                     break;
                 // 添加其他字段映射
             }

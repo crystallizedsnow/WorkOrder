@@ -1,9 +1,10 @@
 package com.example.spring_vue_demo.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.example.spring_vue_demo.common.TimeTypeHandler;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
+
+import java.time.LocalDateTime;
 
 
 
@@ -47,11 +48,9 @@ public class Flow {
     @Schema(description = "是否为该流程终止节点")
     private Boolean isLastNode;
 
-    @TableField(typeHandler = TimeTypeHandler.class, fill = FieldFill.INSERT)
     @Schema(description = "创建时间")
-    private String createTime;
+    private LocalDateTime createTime;
 
-    @TableField(typeHandler = TimeTypeHandler.class, fill = FieldFill.INSERT_UPDATE)
     @Schema(description = "更新时间")
-    private String updateTime;
+    private LocalDateTime updateTime;
 }

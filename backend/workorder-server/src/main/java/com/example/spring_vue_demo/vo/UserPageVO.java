@@ -1,13 +1,13 @@
 package com.example.spring_vue_demo.vo;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
-import com.example.spring_vue_demo.common.TimeTypeHandler;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
 
 @Data
 @NoArgsConstructor
@@ -56,12 +56,10 @@ public class UserPageVO {
     @Schema(description = "邮箱")
     private String email;
 
-    @TableField(typeHandler = TimeTypeHandler.class)
     @Schema(description = "创建时间")
-    private String createTime;
+    private LocalDateTime createTime;
 
-    @TableField(typeHandler = TimeTypeHandler.class)
     @Schema(description = "更新时间")
-    private String updateTime;
+    private LocalDateTime updateTime;
 
 }

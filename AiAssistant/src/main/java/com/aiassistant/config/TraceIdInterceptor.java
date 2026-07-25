@@ -1,4 +1,4 @@
-package com.example.spring_vue_demo.Interceptor;
+package com.aiassistant.config;
 
 import org.slf4j.MDC;
 import org.springframework.stereotype.Component;

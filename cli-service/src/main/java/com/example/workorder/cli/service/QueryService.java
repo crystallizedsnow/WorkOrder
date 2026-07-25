@@ -11,15 +11,15 @@ import com.example.workorder.cli.enums.DataCodeEnum;
 import com.example.workorder.cli.feign.DashboardFeignClient;
 import com.example.workorder.cli.feign.FlowFeignClient;
 import com.example.workorder.cli.feign.WorkOrderFeignClient;
-import lombok.extern.slf4j.Slf4j;
+import com.example.workorder.cli.util.LogUtils;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.Map;
 
-@Slf4j
 @Service
 public class QueryService {
 
@@ -36,31 +36,38 @@ public class QueryService {
     private FlowFeignClient flowFeignClient;
 
     public Object query(String dataCode, Map<String, Object> params, String token, String traceId) {
+        String mdcTraceId = MDC.get("traceId");
+        Map<String, Object> logParams = new HashMap<>();
+        logParams.put("dataCode", dataCode);
+        logParams.put("params", params);
+        logParams.put("token", "***");
+        LogUtils.entrance(mdcTraceId, "QueryService.query", logParams);
+
         DataCodeEnum e = DataCodeEnum.fromDataCode(dataCode);
         if (e == null) {
-            log.warn("Unknown dataCode: {}", dataCode);
-            return createError(404, "dataCode not found: " + dataCode, traceId);
+            LogUtils.warn(mdcTraceId, "QueryService.query", "Unknown dataCode: " + dataCode);
+            return createError(404, "dataCode not found: " + dataCode, mdcTraceId);
         }
 
         if ("admin".equals(e.getPermission()) && !authService.hasAdminRole(token)) {
-            log.warn("Permission denied for dataCode: {}, requires admin role", dataCode);
-            return createError(403, "Permission denied: admin role required", traceId);
+            LogUtils.warn(mdcTraceId, "QueryService.query", "Permission denied for dataCode: " + dataCode + ", requires admin role");
+            return createError(403, "Permission denied: admin role required", mdcTraceId);
         }
 
         try {
-            ResponseEntity<?> response = callFeignClient(e, params, token, traceId);
+            ResponseEntity<?> response = callFeignClient(e, params, token, mdcTraceId);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Object normalized = normalizeResponse(response.getBody());
-                log.info("Query success, dataCode: {}, traceId: {}", dataCode, traceId);
+                LogUtils.returnLog(mdcTraceId, "QueryService.query", normalized);
                 return normalized;
             } else {
-                log.error("Backend returned non-2xx: {}, traceId: {}", response.getStatusCode(), traceId);
-                return createError(500, "Backend service error: " + response.getStatusCode(), traceId);
+                LogUtils.error(mdcTraceId, "QueryService.query", "Backend returned non-2xx: " + response.getStatusCode());
+                return createError(500, "Backend service error: " + response.getStatusCode(), mdcTraceId);
             }
         } catch (Exception ex) {
-            log.error("Query failed, dataCode: {}, traceId: {}, error: {}", dataCode, traceId, ex.getMessage());
-            return createError(500, "Query failed: " + ex.getMessage(), traceId);
+            LogUtils.error(mdcTraceId, "QueryService.query", logParams, ex);
+            return createError(500, "Query failed: " + ex.getMessage(), mdcTraceId);
         }
     }
 
@@ -205,7 +212,7 @@ public class QueryService {
             result.put("traceId", "");
             return result;
         } catch (Exception e) {
-            log.warn("Failed to parse response as JSON, returning raw object", e);
+            LogUtils.error(MDC.get("traceId"), "QueryService", "Failed to parse response as JSON, returning raw object", e);
             Map<String, Object> result = new java.util.HashMap<>();
             result.put("code", (long) 0);
             result.put("message", "success");

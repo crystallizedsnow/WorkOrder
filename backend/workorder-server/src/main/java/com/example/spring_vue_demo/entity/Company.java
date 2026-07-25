@@ -4,11 +4,13 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.example.spring_vue_demo.common.TimeTypeHandler;
+import com.baomidou.mybatisplus.annotation.FieldFill;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
 
 /**
  *
@@ -32,10 +34,8 @@ public class Company {
     private String parentCompanyCode;
     @Schema(description="公司等级")
     private int level;
-    @TableField(typeHandler = TimeTypeHandler.class)
     @Schema(description = "创建时间")
-    private String createTime;
-    @TableField(typeHandler = TimeTypeHandler.class)
+    private LocalDateTime createTime;
     @Schema(description = "更新时间")
-    private String updateTime;
+    private LocalDateTime updateTime;
 }

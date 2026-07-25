@@ -10,9 +10,42 @@ version: 1.0.0
 ## 概述
 
 本技能用于通过workorder-cli命令行工具查询工单系统的数据。Agent需要按照以下流程执行CLI命令：
-1. 获取所有可查询的数据类型（dataCode列表）
-2. 获取指定dataCode的参数Schema
-3. 根据Schema拼接完整命令并执行
+1. 生成18位随机数字作为traceId
+2. 获取所有可查询的数据类型（dataCode列表）
+3. 获取指定dataCode的参数Schema
+4. 根据Schema拼接完整命令并执行
+
+## TraceId生成机制
+
+### 生成规则
+
+每次查询前必须生成18位随机数字作为traceId，用于日志追踪和问题排查。
+
+**生成方式**：
+```
+traceId = 18位随机数字（范围：0-9的随机组合，首位不能为0）
+```
+
+**生成示例**：
+```python
+import random
+traceId = str(random.randint(100000000000000000, 999999999999999999))
+```
+
+### 传递方式
+
+traceId通过环境变量 `WORKORDER_TRACE_ID` 传递给workorder-cli，每次查询必须携带相同的traceId：
+
+```bash
+export WORKORDER_TRACE_ID="123456789012345678"
+workorder-cli work_order page --page-num 1 --page-size 10
+```
+
+### 注意事项
+
+- 同一个会话中的所有命令必须使用相同的traceId
+- traceId必须为18位数字，不能包含字母或特殊字符
+- 响应结果中会返回相同的traceId，用于确认请求链路
 
 ## Token管理机制
 

@@ -1,11 +1,12 @@
 package com.example.spring_vue_demo.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.example.spring_vue_demo.common.TimeTypeHandler;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
 
 /**
  * @author wtt
@@ -37,9 +38,8 @@ public class Message {
     @Schema(description = "内容")
     private String content;
 
-    @TableField(typeHandler = TimeTypeHandler.class)
     @Schema(description = "发送时间")
-    private String sendTime;
+    private LocalDateTime sendTime;
 
     @TableLogic
     @Schema(description = "删除位")

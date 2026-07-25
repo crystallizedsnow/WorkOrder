@@ -16,6 +16,7 @@ import com.itextpdf.text.pdf.draw.LineSeparator;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.format.DateTimeFormatter;
 
 public class WorkOrderPdfGenerator {
 
@@ -189,7 +190,7 @@ public class WorkOrderPdfGenerator {
             addDetailRow(table, "公司:", node!=null?node.getCompanyName():null);
             addDetailRow(table, "部门:", node!=null?node.getDepartmentName():null);
             addDetailRow(table, "操作类型:", node!=null?node.getHandleTypeDesc():null);
-            addDetailRow(table, "操作时间:", node!=null?node.getHandleTime():null);
+            addDetailRow(table, "操作时间:", node!=null && node.getHandleTime()!=null?node.getHandleTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")):null);
             addDetailRow(table, "状态:", node!=null?node.getFinishedDesc():null);
             addDetailRow(table,"备注：",node!=null?node.getRemark():null);
 

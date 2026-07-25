@@ -185,8 +185,7 @@ public class FlowServiceImpl extends ServiceImpl<FlowMapper, Flow> implements Fl
         flow.setNodeType(nodeType);
         flow.setHandlerId(handlerId);
         flow.setHandlerName(handlerName);
-        flow.setIsLastNode(isLastNode); // 标记为终止节点
-        flow.setCreateTime(formatter.format(LocalDateTime.now()));
+        flow.setIsLastNode(isLastNode);
         return flow;
     }
 }

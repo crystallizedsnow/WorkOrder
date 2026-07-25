@@ -4,19 +4,19 @@ import com.example.workorder.cli.dto.request.QueryRequest;
 import com.example.workorder.cli.dto.response.ApiResponse;
 import com.example.workorder.cli.dto.response.DataCodeDTO;
 import com.example.workorder.cli.dto.response.SchemaDTO;
-import com.example.workorder.cli.interceptor.TraceIdInterceptor;
 import com.example.workorder.cli.service.QueryService;
 import com.example.workorder.cli.service.SchemaService;
+import com.example.workorder.cli.util.LogUtils;
 import jakarta.validation.Valid;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.servlet.http.HttpServletRequest;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-@Slf4j
 @RestController
 @RequestMapping("/api")
 public class ApiController {
@@ -29,33 +29,37 @@ public class ApiController {
 
     @GetMapping("/dataCodes")
     public ApiResponse<List<DataCodeDTO>> listDataCodes() {
-        log.info("Listing all data codes");
+        String traceId = MDC.get("traceId");
+        LogUtils.entrance(traceId, "/api/dataCodes", "GET", null);
         List<DataCodeDTO> dataCodes = schemaService.listDataCodes();
+        LogUtils.returnLog(traceId, "/api/dataCodes", "GET", dataCodes);
         return ApiResponse.success(dataCodes);
     }
 
     @GetMapping("/schema/{dataCode}")
-    public ApiResponse<SchemaDTO> getSchema(
-            @PathVariable String dataCode,
-            HttpServletRequest request) {
-        String traceId = request.getHeader(TraceIdInterceptor.TRACE_ID_HEADER);
-        log.info("Getting schema for dataCode: {}, traceId: {}", dataCode, traceId);
+    public ApiResponse<SchemaDTO> getSchema(@PathVariable String dataCode) {
+        String traceId = MDC.get("traceId");
+        LogUtils.entrance(traceId, "/api/schema/" + dataCode, "GET", dataCode);
         
         SchemaDTO schema = schemaService.getSchema(dataCode);
         if (schema == null) {
+            LogUtils.warn(traceId, "/api/schema/" + dataCode, "Schema not found");
             return ApiResponse.error(404, "Schema not found for dataCode: " + dataCode, traceId);
         }
+        LogUtils.returnLog(traceId, "/api/schema/" + dataCode, "GET", schema);
         return ApiResponse.success(schema, traceId);
     }
 
     @PostMapping("/query")
     public ResponseEntity<Object> query(
             @Valid @RequestBody QueryRequest request,
-            @RequestHeader("Authorization") String token,
-            HttpServletRequest httpRequest) {
-        String traceId = httpRequest.getHeader(TraceIdInterceptor.TRACE_ID_HEADER);
-        log.info("Querying dataCode: {}, token: {}, traceId: {}", 
-                request.getDataCode(), token != null ? "***" : null, traceId);
+            @RequestHeader("Authorization") String token) {
+        String traceId = MDC.get("traceId");
+        Map<String, Object> params = new HashMap<>();
+        params.put("dataCode", request.getDataCode());
+        params.put("params", request.getParams());
+        params.put("token", "***");
+        LogUtils.entrance(traceId, "/api/query", "POST", params);
 
         Object result = queryService.query(
                 request.getDataCode(),
@@ -63,6 +67,7 @@ public class ApiController {
                 token,
                 traceId);
 
+        LogUtils.returnLog(traceId, "/api/query", "POST", result);
         return ResponseEntity.ok(result);
     }
 }

@@ -3,6 +3,8 @@ package com.example.spring_vue_demo.vo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.time.LocalDateTime;
+
 @Data
 public class StaffBelongInfoVO {
     @Schema(description = "员工id")
@@ -32,7 +34,7 @@ public class StaffBelongInfoVO {
     @Schema(description = "角色：admin/user")
     private String role;
     @Schema(description = "创建时间")
-    private String createTime;
+    private LocalDateTime createTime;
     @Schema(description = "更新时间")
-    private String updateTime;
+    private LocalDateTime updateTime;
 }

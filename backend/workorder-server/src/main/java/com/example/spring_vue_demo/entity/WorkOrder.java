@@ -1,7 +1,6 @@
 package com.example.spring_vue_demo.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.example.spring_vue_demo.common.TimeTypeHandler;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -10,6 +9,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Setting;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -66,25 +66,20 @@ public class WorkOrder {
     @Schema(description = "状态，100未审核，200审核中，270审核失败，300未派单，400处理中，410已超时，500已完成，600已确认完成，670确认失败，700已取消")
     private Integer status;
 
-    @TableField(typeHandler = TimeTypeHandler.class,fill=FieldFill.INSERT)
     @Schema(description = "创建时间")
-    private String createTime;
+    private LocalDateTime createTime;
 
-    @TableField(typeHandler = TimeTypeHandler.class,fill=FieldFill.INSERT_UPDATE)
     @Schema(description = "更新时间")
-    private String updateTime;
+    private LocalDateTime updateTime;
 
-    @TableField(typeHandler = TimeTypeHandler.class)
     @Schema(description = "取消时间")
-    private String cancelTime;
+    private LocalDateTime cancelTime;
 
-    @TableField(typeHandler = TimeTypeHandler.class)
     @Schema(description = "删除时间")
-    private String deleteTime;
+    private LocalDateTime deleteTime;
 
-    @TableField(typeHandler = TimeTypeHandler.class)
     @Schema(description = "截止时间")
-    private String deadlineTime;
+    private LocalDateTime deadlineTime;
 
     @Schema(description = "详情")
     private String content;

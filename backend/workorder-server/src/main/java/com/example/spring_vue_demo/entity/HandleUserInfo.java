@@ -1,11 +1,12 @@
 package com.example.spring_vue_demo.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.example.spring_vue_demo.common.TimeTypeHandler;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
 
 /**
  * @author wtt
@@ -48,17 +49,14 @@ public class HandleUserInfo {
     @Schema(description = "部门名")
     private String departmentName;
 
-    @TableField(typeHandler = TimeTypeHandler.class)
     @Schema(description = "操作时间")
-    private String handleTime;
+    private LocalDateTime handleTime;
 
-    @TableField(typeHandler = TimeTypeHandler.class,fill = FieldFill.INSERT)
     @Schema(description = "创建时间")
-    private String createTime;
+    private LocalDateTime createTime;
 
-    @TableField(typeHandler = TimeTypeHandler.class,fill = FieldFill.INSERT_UPDATE)
     @Schema(description = "更新时间")
-    private String updateTime;
+    private LocalDateTime updateTime;
 
     @Schema(description = "操作备注")
     private String remark;

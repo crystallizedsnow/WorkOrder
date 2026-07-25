@@ -17,10 +17,9 @@ import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.net.URLEncoder;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Objects;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -39,7 +38,6 @@ public class WorkOrderExportHelper {
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final DateTimeFormatter formatterDate = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    // 处理导出数据
     public void processExportData(List<WorkOrderPageVO> pageVOS, List<WorkOrderExportVO> excelVOS) {
         Map<String, List<HandleUserInfoVO>> collectHandle = pageVOS.stream()
                 .filter(vo -> vo.getHandlerInfo() != null)
@@ -55,49 +53,25 @@ public class WorkOrderExportHelper {
             List<HandleUserInfoVO> auditInfos = collectAudit.getOrDefault(code, null);
 
             if (CollectionUtils.isNotEmpty(handleInfos)) {
-                List<String> handleTimes = handleInfos.stream()
+                LocalDateTime maxHandleTime = handleInfos.stream()
                         .filter(HandleUserInfoVO::getFinished)
                         .map(HandleUserInfoVO::getHandleTime)
-                        .toList();
-
-                List<Long> handleTimeStamps = handleTimes.stream()
-                        .map(handleTime -> LocalDateTime.parse(handleTime, formatter)
-                                .atZone(ZoneId.systemDefault())
-                                .toInstant()
-                                .getEpochSecond())
-                        .toList();
-
-                Long maxHandleTimeStamps = handleTimeStamps.stream()
-                        .max(Comparator.comparingLong(Long::longValue))
+                        .filter(Objects::nonNull)
+                        .max(LocalDateTime::compareTo)
                         .orElse(null);
 
-                exportVO.setFinishTime(maxHandleTimeStamps != null ?
-                        formatter.format(Instant.ofEpochSecond(maxHandleTimeStamps)
-                                .atZone(ZoneId.systemDefault())
-                                .toLocalDateTime()) : null);
+                exportVO.setFinishTime(maxHandleTime != null ? formatter.format(maxHandleTime) : null);
             }
 
             if (CollectionUtils.isNotEmpty(auditInfos)) {
-                List<String> auditTimes = auditInfos.stream()
+                LocalDateTime maxAuditTime = auditInfos.stream()
                         .filter(HandleUserInfoVO::getFinished)
                         .map(HandleUserInfoVO::getHandleTime)
-                        .toList();
-
-                List<Long> auditTimeStamps = auditTimes.stream()
-                        .map(handleTime -> LocalDateTime.parse(handleTime, formatter)
-                                .atZone(ZoneId.systemDefault())
-                                .toInstant()
-                                .getEpochSecond())
-                        .toList();
-
-                Long maxAuditTimeStamps = auditTimeStamps.stream()
-                        .max(Comparator.comparingLong(Long::longValue))
+                        .filter(Objects::nonNull)
+                        .max(LocalDateTime::compareTo)
                         .orElse(null);
 
-                exportVO.setFinishedAuditTime(maxAuditTimeStamps != null ?
-                        formatter.format(Instant.ofEpochSecond(maxAuditTimeStamps)
-                                .atZone(ZoneId.systemDefault())
-                                .toLocalDateTime()) : null);
+                exportVO.setFinishedAuditTime(maxAuditTime != null ? formatter.format(maxAuditTime) : null);
             }
         }
 

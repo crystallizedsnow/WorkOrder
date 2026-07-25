@@ -189,7 +189,7 @@ public class WorkOrderHelper {
         message.setTypeDesc(status.getDesc());
         message.setSenderId(userId);
         message.setReceiverId(assignedUserId);
-        message.setSendTime(formatter.format(LocalDateTime.now()));
+        message.setSendTime(LocalDateTime.now());
         return message;
     }
 
@@ -240,7 +240,7 @@ public class WorkOrderHelper {
             message.setTypeDesc(status.getDesc());
             message.setSenderId(senderId);
             message.setReceiverId(assignedUserId);
-            message.setSendTime(formatter.format(LocalDateTime.now()));
+            message.setSendTime(LocalDateTime.now());
             messages.add(message);
         });
         return messages;
@@ -303,9 +303,9 @@ public class WorkOrderHelper {
             }
             handleUserInfo.setFinished(Boolean.FALSE);
             if (handleTypeEnum.equals(HandleTypeEnum.DISTRIBUTE)) {
-                handleUserInfo.setHandleTime(formatter.format(LocalDateTime.now()));
+                handleUserInfo.setHandleTime(LocalDateTime.now());
             }
-            handleUserInfo.setHandleTime(formatter.format(LocalDateTime.now()));
+            handleUserInfo.setHandleTime(LocalDateTime.now());
             handleUserInfoMapper.insert(handleUserInfo);
         }
         else if(handleTypeEnum.equals(HandleTypeEnum.CREATED))
@@ -330,9 +330,9 @@ public class WorkOrderHelper {
             handleUserInfo.setFinished(Boolean.FALSE);
             handleUserInfo.setHandleType(HandleUserInfoHandleTypeEnum.SUBMIT.getValue());
             handleUserInfo.setFinished(Boolean.TRUE);
-            handleUserInfo.setCreateTime(formatter.format(LocalDateTime.now()));
-            handleUserInfo.setHandleTime(formatter.format(LocalDateTime.now()));
-            handleUserInfo.setUpdateTime(formatter.format(LocalDateTime.now()));
+            
+            handleUserInfo.setHandleTime(LocalDateTime.now());
+            
             handleUserInfoMapper.insert(handleUserInfo);
 
         }else if(handleTypeEnum.equals(HandleTypeEnum.AUDIT)){
@@ -349,8 +349,8 @@ public class WorkOrderHelper {
             handleUserInfo.setFinished(Boolean.FALSE);
             handleUserInfo.setHandleType(HandleUserInfoHandleTypeEnum.AUDIT.getValue());
             handleUserInfo.setFinished(Boolean.FALSE);
-            handleUserInfo.setHandleTime(formatter.format(LocalDateTime.now()));
-            handleUserInfo.setUpdateTime(formatter.format(LocalDateTime.now()));
+            handleUserInfo.setHandleTime(LocalDateTime.now());
+            
             handleUserInfoMapper.insert(handleUserInfo);
         }
     }
@@ -407,24 +407,20 @@ public class WorkOrderHelper {
 
     public void updateFinishHandleInfo(WorkOrder workOrder, HandleTypeEnum handleType, String remark) {
         Long orderId = workOrder.getId();
-        Long handleTime = LocalDateTime.now().atZone(ZoneId.systemDefault()).toEpochSecond();
+        LocalDateTime handleTime = LocalDateTime.now();
         if (handleType.equals(HandleTypeEnum.DISTRIBUTE)) {
-            //筛选本用户对应状态的操作信息
             Long staffId = StaffHolder.get().getId();
             LambdaUpdateWrapper<HandleUserInfo> wrapper = HandleUserInfoQuery.getUpdateStatusWrapper(orderId, List.of(staffId), HandleUserInfoHandleTypeEnum.DISTRIBUTE.getValue(), Boolean.TRUE, handleTime, remark);
             handleUserInfoMapper.update(wrapper);
         } else if (handleType.equals(HandleTypeEnum.FINISH)) {
-            //筛选本用户对应状态的操作信息
             Long staffId = StaffHolder.get().getId();
             LambdaUpdateWrapper<HandleUserInfo> wrapper = HandleUserInfoQuery.getUpdateStatusWrapper(orderId, List.of(staffId), HandleUserInfoHandleTypeEnum.HANDLE.getValue(), Boolean.TRUE, handleTime, remark);
             handleUserInfoMapper.update(wrapper);
         } else if (handleType.equals(HandleTypeEnum.CHECK_SUCCESS)) {
-            //筛选本用户对应状态的操作信息
             Long staffId = StaffHolder.get().getId();
             LambdaUpdateWrapper<HandleUserInfo> wrapper = HandleUserInfoQuery.getUpdateStatusWrapper(orderId, List.of(staffId), HandleUserInfoHandleTypeEnum.CHECK.getValue(), Boolean.TRUE, handleTime, remark);
             handleUserInfoMapper.update(wrapper);
         } else if (handleType.equals(HandleTypeEnum.CHECK_FAILURE)) {
-            //回退所有处理完成状态的操作信息
             LambdaQueryWrapper<HandleUserInfo> handleTypeWrapper = HandleUserInfoQuery.getHandleTypeWrapper(orderId, HandleUserInfoHandleTypeEnum.HANDLE.getValue());
             List<HandleUserInfo> handleUserInfos = handleUserInfoMapper.selectList(handleTypeWrapper);
             List<Long> handleUserIds = handleUserInfos.stream().map(HandleUserInfo::getUserId).collect(Collectors.toList());
@@ -519,18 +515,12 @@ public class WorkOrderHelper {
         workOrder.setStatus(100); //待审核
         workOrder.setFlowId(param.getFlowId());
         workOrder.setContent(param.getContent());
-        //时间
-        String formatNow = formatter.format(LocalDateTime.now());
-        workOrder.setCreateTime(formatNow);
-        workOrder.setUpdateTime(formatNow);
-        //转换时间戳
         if(param.getDeadlineTime()!=null) {
-            String formattedTime = LocalDateTime.ofInstant(
+            LocalDateTime deadlineTime = LocalDateTime.ofInstant(
                     Instant.ofEpochSecond(param.getDeadlineTime()),
                     ZoneId.systemDefault()
-            ).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            log.info(formattedTime);
-            workOrder.setDeadlineTime(formattedTime);
+            );
+            workOrder.setDeadlineTime(deadlineTime);
         }
         String orderCode = OrderCodeUtils.generateWorkOrderCode();
         workOrder.setCode(orderCode);

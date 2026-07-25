@@ -2,7 +2,8 @@ package com.aiassistant.controller;
 
 import com.aiassistant.agent.AgentLoop;
 import com.aiassistant.common.ChatForm;
-import lombok.extern.slf4j.Slf4j;
+import com.aiassistant.util.LogUtils;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -10,9 +11,11 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/assistant")
-@Slf4j
 public class AIChatController {
 
     @Autowired
@@ -20,13 +23,24 @@ public class AIChatController {
 
     @GetMapping("/")
     public String healthCheck() {
+        String traceId = MDC.get("traceId");
+        LogUtils.entrance(traceId, "/assistant/", "GET", null);
+        LogUtils.returnLog(traceId, "/assistant/", "GET", "success");
         return "AiAssistant is running";
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamChat(@RequestBody ChatForm chatForm, @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
-        log.info("收到聊天请求, memoryId={}, message={}", chatForm.getMemoryId(), chatForm.getMessage());
+        String traceId = MDC.get("traceId");
+        Map<String, Object> params = new HashMap<>();
+        params.put("memoryId", chatForm.getMemoryId());
+        params.put("message", chatForm.getMessage());
+        params.put("authHeader", authHeader != null ? "***" : null);
+        LogUtils.entrance(traceId, "/assistant/chat", "POST", params);
+        
         return agentLoop.run(chatForm.getMemoryId(), chatForm.getMessage(), authHeader)
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnComplete(() -> LogUtils.returnLog(traceId, "/assistant/chat", "POST", "completed"))
+                .doOnError(e -> LogUtils.error(traceId, "/assistant/chat", params, e));
     }
 }

@@ -47,9 +47,9 @@ public interface WorkOrderConverter {
     @Mapping(target="distributer",expression = "java( pageVO.getDistributerInfo()!=null?pageVO.getDistributerInfo().getUserName():null )")
     @Mapping(target="auditors",expression = "java(pageVO.getAuditorInfo()!=null?pageVO.getAuditorInfo().stream().map(com.example.spring_vue_demo.vo.HandleUserInfoVO::getUserName).collect(java.util.stream.Collectors.joining(\"、\")):null )")
     @Mapping(target="checker",expression = "java(pageVO.getCheckerInfo()!=null?pageVO.getCheckerInfo().getUserName():null )")
-    @Mapping(target="distributeTime",expression = "java(pageVO.getDistributerInfo()!=null?pageVO.getDistributerInfo().getHandleTime():null)")
+    @Mapping(target="distributeTime",expression = "java(pageVO.getDistributerInfo()!=null && pageVO.getDistributerInfo().getHandleTime()!=null?pageVO.getDistributerInfo().getHandleTime().format(java.time.format.DateTimeFormatter.ofPattern(\"yyyy-MM-dd HH:mm:ss\")):null)")
     @Mapping(target="handlers",expression = "java(pageVO.getHandlerInfo()!=null?pageVO.getHandlerInfo().stream().map(com.example.spring_vue_demo.vo.HandleUserInfoVO::getUserName).collect(java.util.stream.Collectors.joining(\"、\")) :null )")
-    @Mapping(target="checkTime",expression = "java( pageVO.getCheckerInfo()!=null?pageVO.getCheckerInfo().getHandleTime():null )")
+    @Mapping(target="checkTime",expression = "java( pageVO.getCheckerInfo()!=null && pageVO.getCheckerInfo().getHandleTime()!=null?pageVO.getCheckerInfo().getHandleTime().format(java.time.format.DateTimeFormatter.ofPattern(\"yyyy-MM-dd HH:mm:ss\")):null )")
     WorkOrderExportVO toExcelVO(WorkOrderPageVO pageVO);
 
 }

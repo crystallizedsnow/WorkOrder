@@ -362,15 +362,12 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
         return Result.success(workOrderApprovalVO);
     }
 
-    //5min检查一次数据库中延迟的工单
     @Async
     @Scheduled(fixedDelay = 5 * 60 * 1000)
     @Transactional
     public void checkAndUpdateOverdueOrders() {
-        // 查询所有状态是handle且deadlineTime已过的工单
         LocalDateTime now = LocalDateTime.now();
-        Long nowTime = now.atZone(ZoneId.systemDefault()).toEpochSecond();
-        LambdaQueryWrapper<WorkOrder> getDelayWrapper = HandleUserInfoQuery.getByStatusAndDeadlineTime(nowTime, List.of(WorkOrderStatusEnum.HANDLING.getValue(), WorkOrderStatusEnum.CHECK_FAILURE.getValue()));
+        LambdaQueryWrapper<WorkOrder> getDelayWrapper = HandleUserInfoQuery.getByStatusAndDeadlineTime(now, List.of(WorkOrderStatusEnum.HANDLING.getValue(), WorkOrderStatusEnum.CHECK_FAILURE.getValue()));
         List<WorkOrder> overdueOrders = this.list(getDelayWrapper);
         for (WorkOrder order : overdueOrders) {
             //更新工单状态

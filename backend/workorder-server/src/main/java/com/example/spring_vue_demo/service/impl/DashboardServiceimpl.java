@@ -55,9 +55,8 @@ public class DashboardServiceimpl implements DashboardService {
 
     @Override
     public WorkOrderDataVO getData() {
-        //所有数据
-        Long currentTime = LocalDateTime.now().atZone(ZoneId.systemDefault()).toEpochSecond();
-        Long monthAgoTime = LocalDateTime.now().minusMonths(1L).atZone(ZoneId.systemDefault()).toEpochSecond();
+        LocalDateTime currentTime = LocalDateTime.now();
+        LocalDateTime monthAgoTime = LocalDateTime.now().minusMonths(1L);
         LambdaQueryWrapper<WorkOrder> finishWrapper = WorkOrderQuery.getByDateStatus(List.of(WorkOrderStatusEnum.FINISHED.getValue(), WorkOrderStatusEnum.CHECKED.getValue()), currentTime, monthAgoTime);
         Long monthFinishedNum = workOrderMapper.selectCount(finishWrapper);
         LambdaQueryWrapper<WorkOrder> unHandledWrapper = WorkOrderQuery.getByDateStatus(List.of(WorkOrderStatusEnum.HANDLING.getValue(), WorkOrderStatusEnum.DELAYED.getValue()), null, null);
@@ -92,15 +91,12 @@ public class DashboardServiceimpl implements DashboardService {
     @Override
     public List<StatusDataVO> getStatus(StatusDataParam param) {
         TimeTypeEnum timeTypeEnum = TimeTypeEnum.getByValue(param.getTimeType());
-        Long createTimeFrom = null;
-        Long createTimeTo = LocalDateTime.now().atZone(ZoneId.systemDefault()).toEpochSecond();
+        LocalDateTime createTimeFrom = null;
+        LocalDateTime createTimeTo = LocalDateTime.now();
         switch (timeTypeEnum) {
-            case WEEK ->
-                    createTimeFrom = LocalDateTime.now().minusWeeks(1L).atZone(ZoneId.systemDefault()).toEpochSecond();
-            case MONTH ->
-                    createTimeFrom = LocalDateTime.now().minusMonths(1L).atZone(ZoneId.systemDefault()).toEpochSecond();
-            case YEAR ->
-                    createTimeFrom = LocalDateTime.now().minusYears(1L).atZone(ZoneId.systemDefault()).toEpochSecond();
+            case WEEK -> createTimeFrom = LocalDateTime.now().minusWeeks(1L);
+            case MONTH -> createTimeFrom = LocalDateTime.now().minusMonths(1L);
+            case YEAR -> createTimeFrom = LocalDateTime.now().minusYears(1L);
         }
         QueryWrapper<WorkOrder> workOrderWrapper = WorkOrderQuery.getCountGroupByStatusByDate(createTimeFrom, createTimeTo);
         List<Map<String, Object>> statusMaps = workOrderMapper.selectMaps(workOrderWrapper);
@@ -125,15 +121,12 @@ public class DashboardServiceimpl implements DashboardService {
     @Override
     public List<TypeDataVO> getType(StatusDataParam param) {
         TimeTypeEnum timeTypeEnum = TimeTypeEnum.getByValue(param.getTimeType());
-        Long createTimeFrom = null;
-        Long createTimeTo = LocalDateTime.now().atZone(ZoneId.systemDefault()).toEpochSecond();
+        LocalDateTime createTimeFrom = null;
+        LocalDateTime createTimeTo = LocalDateTime.now();
         switch (timeTypeEnum) {
-            case WEEK ->
-                    createTimeFrom = LocalDateTime.now().minusWeeks(1L).atZone(ZoneId.systemDefault()).toEpochSecond();
-            case MONTH ->
-                    createTimeFrom = LocalDateTime.now().minusMonths(1L).atZone(ZoneId.systemDefault()).toEpochSecond();
-            case YEAR ->
-                    createTimeFrom = LocalDateTime.now().minusYears(1L).atZone(ZoneId.systemDefault()).toEpochSecond();
+            case WEEK -> createTimeFrom = LocalDateTime.now().minusWeeks(1L);
+            case MONTH -> createTimeFrom = LocalDateTime.now().minusMonths(1L);
+            case YEAR -> createTimeFrom = LocalDateTime.now().minusYears(1L);
         }
         QueryWrapper<WorkOrder> workOrderWrapper = WorkOrderQuery.getCountGroupByTypeByDate(createTimeFrom, createTimeTo);
         List<Map<String, Object>> statusMaps = workOrderMapper.selectMaps(workOrderWrapper);
@@ -161,9 +154,9 @@ public class DashboardServiceimpl implements DashboardService {
 
         LocalDate weekAgo = today.minusDays(6);
 
-        long weekAgoTimestamp = weekAgo.atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
-        long todayEndTimestamp = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
-        LambdaQueryWrapper<HandleUserInfo> handleUserInfoWrapper = HandleUserInfoQuery.getByHandleDate(weekAgoTimestamp, todayEndTimestamp);
+        LocalDateTime weekAgoTime = weekAgo.atStartOfDay();
+        LocalDateTime todayEndTime = today.plusDays(1).atStartOfDay();
+        LambdaQueryWrapper<HandleUserInfo> handleUserInfoWrapper = HandleUserInfoQuery.getByHandleDate(weekAgoTime, todayEndTime);
         List<HandleUserInfo> weekHandleUserInfos = handleUserInfoMapper.selectList(handleUserInfoWrapper);
 
         for (long i = 6L; i >= 0L; i--) {
@@ -174,9 +167,9 @@ public class DashboardServiceimpl implements DashboardService {
             List<HandleUserInfo> dateRecords = weekHandleUserInfos.stream()
                     .filter(record -> {
                         LocalDateTime recordTime = record.getHandleTime() != null ?
-                                LocalDateTime.parse(record.getHandleTime(), localDateTimeformatter) :
-                                LocalDateTime.parse(record.getCreateTime(), localDateTimeformatter);
-                        return !recordTime.isBefore(startOfDate) && recordTime.isBefore(endOfDate);
+                                record.getHandleTime() :
+                                record.getCreateTime();
+                        return recordTime != null && !recordTime.isBefore(startOfDate) && recordTime.isBefore(endOfDate);
                     })
                     .collect(Collectors.toList());
 

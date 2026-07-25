@@ -89,13 +89,9 @@ public class StaffServiceImpl extends ServiceImpl<StaffMapper, Staff> implements
         }
         staff.setPhone(param.getPhone());
         staff.setEmail(param.getEmail());
-        //默认密码，员工可以自行修改
         staff.setPassword("123456");
-        //生成员工编号
         String staffNumber = OrganizationCodeUtils.generateStaffCode();
         staff.setStaffNumber(staffNumber);
-        staff.setCreateTime(formatter.format(LocalDateTime.now()));
-        staff.setUpdateTime(formatter.format(LocalDateTime.now()));
         staffMapper.insert(staff);
 
         // 6. 构建返回 VO

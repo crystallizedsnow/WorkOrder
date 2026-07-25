@@ -166,7 +166,7 @@ public class UserServiceImpl extends ServiceImpl<StaffMapper, Staff> implements 
             updateWrapper.set("email", param.getEmail());
         }
 
-        updateWrapper.set("update_time", System.currentTimeMillis() / 1000); // 秒级时间戳
+        updateWrapper.set("update_time", java.time.LocalDateTime.now());
 
         int rows = staffMapper.update(null, updateWrapper);
         if (rows == 0) {
