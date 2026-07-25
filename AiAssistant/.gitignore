@@ -1,0 +1,46 @@
+# Build outputs
+target/
+build/
+
+# IDE configurations
+.idea/
+*.iws
+*.iml
+*.ipr
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Configuration files with personal information
+src/main/resources/application.yaml
+
+# Memory/output directories
+.memory/
+output/
+memory_*.json
+memory_merged_*.json
+
+# Token/auth files
+.auth_token
+TOKEN_FILE
+.token
+*.token
+
+# Python cache
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Test script outputs
+test_*.log
+*.testresult
