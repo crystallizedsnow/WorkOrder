@@ -2,6 +2,11 @@ package com.aiassistant.prompt;
 
 import com.aiassistant.agent.ToolDispatcher;
 import com.aiassistant.loader.SkillLoader;
+import com.aiassistant.llm.ToolDefinition;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
@@ -11,11 +16,23 @@ import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
+/**
+ * 动态系统提示词生成器。
+ * <p>
+ * 将工具、技能以结构化 JSON 注入提示词，todo 工具并入 tools 列表，
+ * ReAct 流程附带输入输出 JSON 示例，最终回答采用 thinking 标签方案
+ * （LLM 在 &lt;thinking&gt;...&lt;/thinking&gt; 内推理，答案在标签外，
+ * 系统解析时剥离 thinking 部分，仅暴露答案给用户）。
+ */
 @Component
 @Slf4j
 public class DynamicPromptGenerator {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .enable(SerializationFeature.INDENT_OUTPUT);
 
     @Autowired
     private SkillLoader skillLoader;
@@ -46,75 +63,244 @@ public class DynamicPromptGenerator {
 
     public String generate() {
         String prompt = basePrompt;
-        
+
         prompt = prompt.replace("{{TOOLS}}", buildToolsSection());
         prompt = prompt.replace("{{SKILLS}}", buildSkillsSection());
-        prompt = prompt.replace("{{TODO}}", buildTodoSection());
+        prompt = prompt.replace("{{SKILL_CONTENT}}", buildSkillContentSection());
         prompt = prompt.replace("{{REACT_FORMAT}}", buildReActSection());
-        
+        prompt = prompt.replace("{{OUTPUT_FORMAT}}", buildOutputFormatSection());
+
         return prompt;
     }
 
-    private String buildToolsSection() {
-        StringBuilder sb = new StringBuilder();
-        Map<String, String> tools = toolDispatcher.listTools();
-        if (tools.isEmpty()) {
-            sb.append("暂无可用工具\n");
-        } else {
-            for (Map.Entry<String, String> entry : tools.entrySet()) {
-                sb.append(String.format("- %s: %s\n", entry.getKey(), entry.getValue()));
-            }
-        }
-        return sb.toString();
-    }
-
-    private String buildSkillsSection() {
-        StringBuilder sb = new StringBuilder();
+    private String buildSkillContentSection() {
         try {
             Map<String, SkillLoader.SkillMetadata> skillMap = getSkillMap();
             if (skillMap.isEmpty()) {
-                sb.append("暂无可用技能\n");
-            } else {
-                sb.append("可用技能列表（当需要使用某个技能时，调用 loadSkill(\"技能名\") 获取完整技能文档）:\n");
-                for (Map.Entry<String, SkillLoader.SkillMetadata> entry : skillMap.entrySet()) {
-                    String skillKey = entry.getKey();
-                    SkillLoader.SkillMetadata meta = entry.getValue();
-                    String displayName = meta.getName() != null ? meta.getName() : skillKey;
-                    String description = meta.getDescription() != null ? meta.getDescription() : "无描述";
-                    sb.append(String.format("  - [%s] %s — %s\n", skillKey, displayName, description));
-                }
-                sb.append("\n技能调用方式：\n");
-                sb.append("  1. 根据用户需求匹配技能描述\n");
-                sb.append("  2. 调用 loadSkill(\"技能名\") 获取完整技能文档\n");
-                sb.append("  3. 根据技能文档执行对应的工具调用\n");
+                return "暂无已加载技能文档\n";
             }
+
+            StringBuilder sb = new StringBuilder();
+            for (String skillKey : skillMap.keySet()) {
+                sb.append("\n### ").append(skillKey).append("\n");
+                sb.append(skillLoader.loadSkillContent(skillKey)).append("\n");
+            }
+            return sb.toString();
         } catch (Exception e) {
-            log.warn("加载技能内容失败: {}", e.getMessage());
-            sb.append("技能加载失败\n");
+            log.warn("注入技能全文失败: {}", e.getMessage());
+            return "技能全文加载失败，请调用 loadSkill 获取完整技能文档。\n";
         }
-        return sb.toString();
     }
 
-    private String buildTodoSection() {
-        return """
-            对于需要多个步骤完成的复杂任务，请先使用 todoWrite 创建任务列表，然后按顺序执行。
-            可用工具：
-              - todoWrite(content, priority): 创建待办任务，priority默认为1
-              - todoList(): 查看当前任务列表
-              - todoUpdate(todoId, status): 更新任务状态(status: pending/in_progress/completed)
-              - todoClear(): 清空所有任务
-            注意：一次只能有一个任务处于in_progress状态
-            """;
+    /**
+     * 以 JSON 数组格式输出全部可用工具（含 todo 系列工具，不再单独列出）。
+     * 每项结构：{"name":"工具名","description":"描述","parameters":{JSON Schema}}
+     */
+    private String buildToolsSection() {
+        try {
+            List<ToolDefinition> defs = toolDispatcher.getToolDefinitions();
+            if (defs == null || defs.isEmpty()) {
+                return "[]\n";
+            }
+            ArrayNode arr = MAPPER.createArrayNode();
+            for (ToolDefinition def : defs) {
+                ObjectNode item = arr.addObject();
+                if (def.getFunction() != null) {
+                    item.put("name", def.getFunction().getName());
+                    item.put("description", def.getFunction().getDescription());
+                    if (def.getFunction().getParameters() != null) {
+                        item.set("parameters", def.getFunction().getParameters());
+                    } else {
+                        item.putObject("parameters");
+                    }
+                }
+            }
+            return MAPPER.writeValueAsString(arr);
+        } catch (Exception e) {
+            log.warn("序列化工具列表为 JSON 失败: {}", e.getMessage());
+            return "[]\n";
+        }
     }
 
+    /**
+     * 以 JSON 数组格式输出全部可用技能元数据。
+     * 每项结构：{"key":"技能键","name":"展示名","description":"描述","type":"类型","version":"版本"}
+     */
+    private String buildSkillsSection() {
+        try {
+            Map<String, SkillLoader.SkillMetadata> skillMap = getSkillMap();
+            if (skillMap.isEmpty()) {
+                return "[]\n";
+            }
+            ArrayNode arr = MAPPER.createArrayNode();
+            for (Map.Entry<String, SkillLoader.SkillMetadata> entry : skillMap.entrySet()) {
+                String skillKey = entry.getKey();
+                SkillLoader.SkillMetadata meta = entry.getValue();
+                ObjectNode item = arr.addObject();
+                item.put("key", skillKey);
+                item.put("name", meta.getName() != null ? meta.getName() : skillKey);
+                item.put("description", meta.getDescription() != null ? meta.getDescription() : "");
+                item.put("type", meta.getType() != null ? meta.getType() : "");
+                item.put("version", meta.getVersion() != null ? meta.getVersion() : "");
+            }
+            return MAPPER.writeValueAsString(arr);
+        } catch (Exception e) {
+            log.warn("序列化技能列表为 JSON 失败: {}", e.getMessage());
+            return "[]\n";
+        }
+    }
+
+    /**
+     * ReAct 工具调用流程，附输入输出 JSON 示例。
+     */
     private String buildReActSection() {
         return """
-            1. 思考：分析用户需求，决定是否需要调用工具
-            2. 行动：调用工具获取结果
-            3. 总结：根据工具结果给出最终回答
+            ## 工具调用与思考流程（function calling，全程结构化 JSON）
+            系统已通过上方 TOOLS JSON 数组向你提供可用工具（含 todo 系列任务管理工具），
+            每个工具的名称、描述、参数 schema 均已结构化注入。
+            所有输入输出均为结构化 JSON，禁止在正文中用自然语言描述工具调用计划或参数。
+
+            ### 流程
+            1. 思考：在 <thinking>...</thinking> 标签内分析用户需求，决定是否需要调用工具及调用哪个工具
+            2. 行动/调用：通过 tool_calls 字段结构化发起调用，arguments 须为合法 JSON 且字段名与 schema 一致
+            3. 接收：工具结果会以 role=tool 消息结构化回传（含 tool/success/result 字段）
+            4. 总结：根据工具结果继续思考或给出最终回答
+
+            ### 结构化规则
+            - 工具调用：必须通过响应的 tool_calls 数组发起，禁止用自然语言描述
+            - 工具参数：必须是合法 JSON 对象，字段名与 schema 严格一致，类型匹配（string/integer/boolean/array）
+            - 工具结果：以 role=tool 消息回传，结构为 {"tool":"工具名","success":true/false,"result":"执行结果"}
+            - 一次可调用一个或多个工具，调用后须等待工具结果再决定下一步
+            - 不需要工具时，按下方"最终回答格式"返回
+
+            ### 工具失败处理（重要）
+            - 当工具结果 success=false 时，表示工具执行失败，必须检查 result 中的错误信息
+            - 根据错误类型参考已加载的技能文档（SKILL.md）中的错误处理流程
+            - 常见失败场景：CLI 命令返回 code=401（认证失败）→ 按技能文档读取账号文件、调用 login 重新登录并写入Token缓存，然后重试原命令
+            - 不要将失败结果直接转述给用户，应先尝试按技能文档恢复（如重新登录、检查参数等）
+
+            ### 工单写操作硬性流程（来自 SKILL.md，必须遵守）
+            - 写操作包括：创建/处理/删除/取消/审批工单，以及新增/编辑/删除流程
+            - 写操作第一轮执行命令必须带 `--dry-run`，只展示预演计划，不真实写入
+            - 拿到 dry-run 预演结果后，必须原样展示 CLI 返回的预演文本，保留 `[dry-run]`、`操作类型`、`参数详情` 等标记，然后停止工具调用并向用户请求确认
+            - 只有用户明确确认后，才能复制同一条命令并去掉 `--dry-run` 执行真实写操作
+            - 读操作不需要 dry-run
+            - CLI 参数名必须由 Schema 的驼峰字段转换为 kebab-case：`priorityLevel`→`--priority-level`，`flowId`→`--flow-id`，`pageNum`→`--page-num`
+
+            ### 输入输出 JSON 示例
+
+            #### 示例 1：单工具调用
+            用户问：查询工单 WO202506191935695546618613760 的状态
+            模型响应（assistant 消息）：
+            {
+              "content": "<thinking>用户要查工单状态，调用 getWorkOrderDetail 工具</thinking>",
+              "tool_calls": [
+                {
+                  "id": "call_001",
+                  "type": "function",
+                  "function": {
+                    "name": "getWorkOrderDetail",
+                    "arguments": "{\"workOrderNo\":\"WO202506191935695546618613760\"}"
+                  }
+                }
+              ]
+            }
+
+            #### 示例 2：工具结果回传（role=tool 消息）
+            {
+              "role": "tool",
+              "tool_call_id": "call_001",
+              "name": "getWorkOrderDetail",
+              "content": "{\"tool\":\"getWorkOrderDetail\",\"success\":true,\"result\":\"工单状态：已确认完成\"}"
+            }
+
+            #### 示例 3：多工具并行调用
+            模型响应 tool_calls 数组含多个工具调用项，每项有独立 id；
+            系统逐个执行后，对每个 tool_call_id 回传一条 role=tool 消息。
+
+            #### 示例 4：todo 工具调用（任务管理已并入 tools）
+            <thinking>这是复杂任务，先创建 todo 列表</thinking>
+            tool_calls:
+            [
+              {"id":"call_1","type":"function","function":{"name":"todoWrite","arguments":"{\\"content\\":\\"查询工单\\",\\"priority\\":1}"}},
+              {"id":"call_2","type":"function","function":{"name":"todoWrite","arguments":"{\\"content\\":\\"生成报表\\",\\"priority\\":2}"}}
+            ]
+
+            #### 示例 5：工具失败后按技能文档恢复（401 认证失败）
+            工具结果回传（success=false，CLI 返回 401）：
+            {"tool":"getCliCommandSchema","success":false,"result":"{\"code\":401,\"message\":\"Missing Authorization header\",\"data\":null,\"traceId\":\"\"}"}
+
+            模型响应（按技能文档读取本地账号文件）：
+            tool_calls:
+            [{"id":"call_3","type":"function","function":{"name":"readTxtFile","arguments":"{\\"filepath\\":\\"C:\\\\\\\\Users\\\\\\\\Crystal\\\\\\\\.workorder\\\\\\\\account\\"}"}}]
+
+            账号文件返回 {"phone":"138xxxx","password":"******"} 后调用登录工具：
+            tool_calls:
+            [{"id":"call_4","type":"function","function":{"name":"login","arguments":"{\\"phone\\":\\"138xxxx\\",\\"password\\":\\"******\\"}"}}]
+
+            登录成功后，重新执行原命令：
+            tool_calls:
+            [{"id":"call_5","type":"function","function":{"name":"getCliCommandSchema","arguments":"{\\"dataCode\\":\\"work_order_page\\"}"}}]
+
+            备用恢复方式：可直接调用 loginFromStoredAccount，或 executeCliCommand("workorder-cli auth login")，成功后同样必须重试原命令。
+
+            #### 示例 6：创建工单必须先 dry-run
+            用户说：创建一个需求类工单，标题"测试"，详情"内容"，高优先级，流程ID为2081909482228682752
+
+            正确的首次写命令调用：
+            tool_calls:
+            [{"id":"call_6","type":"function","function":{"name":"executeCliCommand","arguments":"{\\"CLI命令字符串\\":\\"workorder-cli --dry-run work_order_create --type 0 --title \\\\\\"测试\\\\\\" --content \\\\\\"内容\\\\\\" --priority-level 0 --flow-id 2081909482228682752\\"}"}}]
+
+            严禁首次调用真实写命令：
+            `workorder-cli work_order_create --type 0 --title "测试" --content "内容" --priority-level 0 --flow-id 2081909482228682752`
+
+            严禁使用驼峰参数：
+            `--priorityLevel`、`--flowId`
             """;
     }
-    
+
+    /**
+     * 最终回答格式：采用 thinking 标签方案。
+     * <p>
+     * 要求 LLM：
+     * <ul>
+     *   <li>每次响应在 &lt;thinking&gt;...&lt;/thinking&gt; 内做简短推理</li>
+     *   <li>最终答案写在标签外（自然语言）</li>
+     * </ul>
+     * 系统解析时剥离 thinking 部分，仅暴露标签外内容给用户。
+     */
+    private String buildOutputFormatSection() {
+        return """
+            ## 最终回答格式（thinking 标签方案）
+            每次响应都先用 <thinking>...</thinking> 标签进行简短推理（用户不可见），
+            然后在标签外给出最终自然语言回答（用户可见）。
+            系统会自动剥离 <thinking> 标签内容，只展示标签外的部分给用户。
+
+            ### 规则
+            - <thinking> 标签内：分析需求、决定是否调用工具、组织回答逻辑（必须推理，不得省略）
+            - 标签外：直接给用户的自然语言回答，简洁明了
+            - 工具调用阶段：content 可仅含 <thinking> 推理，无需标签外内容
+            - 最终回答阶段：先 <thinking> 推理，再在标签外给出答案
+
+            ### 示例
+            用户问：帮我查一下工单 WO202506191935695546618613760 的状态
+
+            第一次响应（调用工具）：
+            <thinking>用户询问工单状态，需要调用 getWorkOrderDetail 工具获取数据</thinking>
+            （通过 tool_calls 调用工具）
+
+            工具结果返回后，最终响应：
+            <thinking>工具返回工单状态为已确认完成，直接转述给用户</thinking>
+            工单 WO202506191935695546618613760 当前状态为：已确认完成。
+
+            ### 注意
+            - <thinking> 标签必须成对出现，内容不能包含 </thinking> 字符串
+            - 默认最终答案使用自然语言；但 CLI 工单写操作真实执行成功或失败后，必须在标签外原样输出工具返回的 JSON 执行结果，不要改写成流程说明或知识库说明
+            - dry-run 预演结果必须在标签外原样输出 CLI 返回文本，并请求用户确认
+            - 推理过程要简短，避免冗长
+            """;
+    }
+
     private Map<String, SkillLoader.SkillMetadata> getSkillMap() {
         try {
             java.lang.reflect.Field field = SkillLoader.class.getDeclaredField("skillMetadataMap");
@@ -139,21 +325,20 @@ public class DynamicPromptGenerator {
             - RAG检索：系统会自动从知识库中检索相关信息，包含工单状态、类型、流程等领域知识
             - 技能文档：通过 loadSkill(技能名) 动态加载完整技能文档
 
-            ## 可用工具
+            ## 可用工具（JSON 数组，含 todo 任务管理工具）
             {{TOOLS}}
 
-            ## 技能知识
+            ## 可用技能（JSON 数组）
             {{SKILLS}}
 
-            ## TodoWrite任务管理
-            {{TODO}}
+            ## 已加载技能文档（SKILL.md）
+            {{SKILL_CONTENT}}
 
             ## 思考-行动循环
             {{REACT_FORMAT}}
 
-            ## 输出格式
-            思考：你的思考过程
-            行动：调用工具名称(参数名=参数值)
+            ## 最终回答格式
+            {{OUTPUT_FORMAT}}
 
             ## 交互原则
             1. 先理解用户需求

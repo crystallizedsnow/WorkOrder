@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.example.workorder.cli.dto.response.DataCodeDTO;
 import com.example.workorder.cli.dto.response.SchemaDTO;
 import com.example.workorder.cli.enums.DataCodeEnum;
+import com.example.workorder.cli.enums.WriteDataCodeEnum;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
@@ -37,14 +38,19 @@ public class SchemaService {
     public List<DataCodeDTO> listDataCodes() {
         List<DataCodeDTO> list = new ArrayList<>();
         for (DataCodeEnum e : DataCodeEnum.values()) {
-            list.add(new DataCodeDTO(e.getDataCode(), e.getName(), e.getDescription(), e.getPermission()));
+            list.add(new DataCodeDTO(e.getDataCode(), e.getName(), e.getDescription(), e.getPermission(), "read"));
+        }
+        for (WriteDataCodeEnum e : WriteDataCodeEnum.values()) {
+            list.add(new DataCodeDTO(e.getDataCode(), e.getName(), e.getDescription(), e.getPermission(), "write"));
         }
         return list;
     }
 
     public SchemaDTO getSchema(String dataCode) {
-        DataCodeEnum e = DataCodeEnum.fromDataCode(dataCode);
-        if (e == null) {
+        DataCodeEnum readEnum = DataCodeEnum.fromDataCode(dataCode);
+        WriteDataCodeEnum writeEnum = WriteDataCodeEnum.fromDataCode(dataCode);
+
+        if (readEnum == null && writeEnum == null) {
             return null;
         }
 
@@ -56,6 +62,9 @@ public class SchemaService {
         Map<String, Object> inputSchema = schemaJson.getJSONObject("inputSchema");
         Map<String, Object> outputSchema = schemaJson.getJSONObject("outputSchema");
 
-        return new SchemaDTO(e.getDataCode(), e.getName(), e.getDescription(), inputSchema, outputSchema);
+        String name = readEnum != null ? readEnum.getName() : writeEnum.getName();
+        String description = readEnum != null ? readEnum.getDescription() : writeEnum.getDescription();
+
+        return new SchemaDTO(dataCode, name, description, inputSchema, outputSchema);
     }
 }

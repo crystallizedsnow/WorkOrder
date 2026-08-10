@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"workorder-cli/internal/api"
 	"workorder-cli/internal/auth"
@@ -32,10 +34,22 @@ func handleAuthCommand(args []string) {
 func handleAuthLogin(args []string) {
 	phone := getArgValue(args, "--phone")
 	password := getArgValue(args, "--password")
+	fromAccountFile := false
 
+	// 未显式传入凭证时，自动从本地 account 文件读取，实现无参数重登
 	if phone == "" || password == "" {
-		output.PrintError(4, "手机号和密码不能为空")
-		return
+		account, err := auth.LoadAccount()
+		if err != nil {
+			output.PrintError(1, fmt.Sprintf("读取账号文件失败: %v", err))
+			return
+		}
+		if account == nil {
+			output.PrintError(4, "手机号和密码不能为空，且本地未找到账号文件。请使用 --phone 和 --password 参数登录")
+			return
+		}
+		phone = account.Phone
+		password = account.Password
+		fromAccountFile = true
 	}
 
 	client := api.NewClient()
@@ -55,6 +69,14 @@ func handleAuthLogin(args []string) {
 	if err := auth.SaveToken(resp.Data, phone); err != nil {
 		output.PrintError(1, fmt.Sprintf("保存Token失败: %v", err))
 		return
+	}
+
+	// 登录成功后保存账号凭证，后续 Token 过期可无参数自动重登
+	if !fromAccountFile {
+		if err := auth.SaveAccount(phone, password); err != nil {
+			output.PrintError(1, fmt.Sprintf("保存账号文件失败: %v", err))
+			return
+		}
 	}
 
 	output.PrintSuccess(map[string]interface{}{
@@ -105,4 +127,29 @@ func getArgValue(args []string, flag string) string {
 		}
 	}
 	return ""
+}
+
+// resolveBodyArg reads the --body argument value. If it starts with "@",
+// the content is read from the specified file. This avoids PowerShell/shell
+// quote-stripping issues when passing inline JSON.
+func resolveBodyArg(args []string) (string, error) {
+	bodyStr := getArgValue(args, "--body")
+	if bodyStr == "" {
+		return "", nil
+	}
+
+	if strings.HasPrefix(bodyStr, "@") {
+		filePath := strings.TrimPrefix(bodyStr, "@")
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return "", fmt.Errorf("读取body文件失败: %v", err)
+		}
+		// Strip UTF-8 BOM (0xEF 0xBB 0xBF) if present
+		if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+			data = data[3:]
+		}
+		return string(data), nil
+	}
+
+	return bodyStr, nil
 }

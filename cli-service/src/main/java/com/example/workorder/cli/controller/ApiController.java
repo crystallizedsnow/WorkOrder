@@ -6,6 +6,7 @@ import com.example.workorder.cli.dto.response.DataCodeDTO;
 import com.example.workorder.cli.dto.response.SchemaDTO;
 import com.example.workorder.cli.service.QueryService;
 import com.example.workorder.cli.service.SchemaService;
+import com.example.workorder.cli.service.WriteService;
 import com.example.workorder.cli.util.LogUtils;
 import jakarta.validation.Valid;
 import org.slf4j.MDC;
@@ -26,6 +27,9 @@ public class ApiController {
 
     @Autowired
     private QueryService queryService;
+
+    @Autowired
+    private WriteService writeService;
 
     @GetMapping("/dataCodes")
     public ApiResponse<List<DataCodeDTO>> listDataCodes() {
@@ -68,6 +72,27 @@ public class ApiController {
                 traceId);
 
         LogUtils.returnLog(traceId, "/api/query", "POST", result);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/execute")
+    public ResponseEntity<Object> execute(
+            @Valid @RequestBody QueryRequest request,
+            @RequestHeader("Authorization") String token) {
+        String traceId = MDC.get("traceId");
+        Map<String, Object> params = new HashMap<>();
+        params.put("dataCode", request.getDataCode());
+        params.put("params", request.getParams());
+        params.put("token", "***");
+        LogUtils.entrance(traceId, "/api/execute", "POST", params);
+
+        Object result = writeService.execute(
+                request.getDataCode(),
+                request.getParams(),
+                token,
+                traceId);
+
+        LogUtils.returnLog(traceId, "/api/execute", "POST", result);
         return ResponseEntity.ok(result);
     }
 }

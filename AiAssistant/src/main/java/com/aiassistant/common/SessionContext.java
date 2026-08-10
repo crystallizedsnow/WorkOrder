@@ -28,6 +28,7 @@ public class SessionContext {
     public void clear() {
         currentMemoryId.remove();
         currentToken.remove();
+        cachedToken = null;
     }
 
     public static Long getStaticMemoryId() {
@@ -39,9 +40,20 @@ public class SessionContext {
         return token != null ? token : cachedToken;
     }
 
+    public static void setStaticToken(String token) {
+        currentToken.set(token);
+        cachedToken = token;
+    }
+
     public static void clearSession() {
         currentMemoryId.remove();
         currentToken.remove();
+        cachedToken = null;
+    }
+
+    public static void clearToken() {
+        currentToken.remove();
+        cachedToken = null;
     }
     
     public static String getCachedToken() {

@@ -30,7 +30,6 @@ func handleApiCommand(args []string) {
 func handleApiCall(args []string) {
 	method := getArgValue(args, "--method")
 	endpoint := getArgValue(args, "--endpoint")
-	body := getArgValue(args, "--body")
 
 	if endpoint == "" {
 		output.PrintError(4, "endpoint参数不能为空")
@@ -45,10 +44,15 @@ func handleApiCall(args []string) {
 	ctx := context.Background()
 
 	var reqBody interface{}
+	body, bodyErr := resolveBodyArg(args)
+	if bodyErr != nil {
+		output.PrintError(4, bodyErr.Error())
+		return
+	}
 	if body != "" {
 		var bodyData map[string]interface{}
 		if err := json.Unmarshal([]byte(body), &bodyData); err != nil {
-			output.PrintError(4, fmt.Sprintf("body参数不是有效的JSON: %v", err))
+			output.PrintError(4, fmt.Sprintf("body参数不是有效的JSON: %v。建议使用 --body @文件路径 从文件读取JSON", err))
 			return
 		}
 		reqBody = bodyData

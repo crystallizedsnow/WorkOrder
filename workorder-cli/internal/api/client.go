@@ -163,6 +163,33 @@ func (c *Client) Query(ctx context.Context, dataCode string, params map[string]i
 	return c.doRequest(req)
 }
 
+func (c *Client) Execute(ctx context.Context, dataCode string, params map[string]interface{}, headers map[string]string) (*ApiResponse, error) {
+	url := fmt.Sprintf("%s/api/execute", c.cliServiceURL)
+
+	reqBody := QueryRequest{
+		DataCode: dataCode,
+		Params:   params,
+	}
+
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal execute request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create execute request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	return c.doRequest(req)
+}
+
 func (c *Client) doRequest(req *http.Request) (*ApiResponse, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -1,7 +1,7 @@
 package com.aiassistant.tools;
 
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
+import com.aiassistant.tool.annotation.P;
+import com.aiassistant.tool.annotation.Tool;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -32,7 +32,7 @@ public class CliExecutorTools {
 
     private String skillPath = "skills";
 
-    @Tool("执行CLI命令，返回JSON格式结果。命令参数应为完整的CLI命令字符串，如 'workorder-cli work_order_page --pageNum 1 --pageSize 10'。")
+    @Tool("执行CLI命令，返回命令输出。只负责透明执行传入的完整CLI命令字符串；命令规范请严格遵循已加载的SKILL.md。示例：'workorder-cli work_order_page --page-num 1 --page-size 10'。")
     public String executeCliCommand(@P("CLI命令字符串") String command) throws IOException {
         String traceId = java.util.UUID.randomUUID().toString();
 
@@ -47,14 +47,32 @@ public class CliExecutorTools {
             String cliBinary = cmdArgs.get(0);
             log.info("executeCliCommand - CLI路径: {}", cliBinary);
 
-            ProcessBuilder processBuilder = new ProcessBuilder(cmdArgs);
+            CommandResult commandResult = runCommand(cmdArgs, traceId);
+            String result = commandResult.output();
+            int exitCode = commandResult.exitCode();
 
-            processBuilder.environment().put("WORKORDER_TRACE_ID", traceId);
+            if (exitCode != 0) {
+                log.error("CLI命令执行失败，退出码: {}, 输出: {}", exitCode, result);
+                return wrapErrorResult(exitCode, result);
+            }
 
-            processBuilder.redirectErrorStream(true);
-            Process process = processBuilder.start();
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("CLI命令执行被中断");
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw new RuntimeException("读取CLI输出失败: " + e.getCause().getMessage());
+        }
+    }
 
-            ExecutorService executor = Executors.newSingleThreadExecutor();
+    private CommandResult runCommand(List<String> cmdArgs, String traceId) throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
+        ProcessBuilder processBuilder = new ProcessBuilder(cmdArgs);
+        processBuilder.environment().put("WORKORDER_TRACE_ID", traceId);
+        processBuilder.redirectErrorStream(true);
+        Process process = processBuilder.start();
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
             Future<String> outputFuture = executor.submit(() -> {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
                 StringBuilder output = new StringBuilder();
@@ -70,28 +88,25 @@ public class CliExecutorTools {
             });
 
             boolean completed = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS);
-
-            String result = outputFuture.get();
-
             if (!completed) {
                 process.destroyForcibly();
+                outputFuture.cancel(true);
                 throw new RuntimeException("CLI命令执行超时");
             }
 
-            int exitCode = process.exitValue();
-
-            if (exitCode != 0) {
-                log.error("CLI命令执行失败，退出码: {}, 输出: {}", exitCode, result);
-                return wrapErrorResult(exitCode, result);
-            }
-
-            return result;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("CLI命令执行被中断");
-        } catch (java.util.concurrent.ExecutionException e) {
-            throw new RuntimeException("读取CLI输出失败: " + e.getCause().getMessage());
+            String output = outputFuture.get();
+            return new CommandResult(process.exitValue(), output);
+        } finally {
+            executor.shutdownNow();
         }
+    }
+
+    private String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\r", "\\r").replace("\n", "\\n");
     }
 
     @Tool("获取所有可用的CLI命令列表")
@@ -209,6 +224,8 @@ public class CliExecutorTools {
                 errorMsg = "执行错误: " + (message != null ? message : "未知错误");
         }
 
-        return String.format("{\"code\": %d, \"message\": \"%s\", \"data\": null, \"traceId\": \"\"}", exitCode, errorMsg);
+        return String.format("{\"code\": %d, \"message\": \"%s\", \"data\": null, \"traceId\": \"\"}", exitCode, escapeJson(errorMsg));
     }
+
+    private record CommandResult(int exitCode, String output) {}
 }

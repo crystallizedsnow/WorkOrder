@@ -18,9 +18,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @TestPropertySource(properties = {
-    "langchain4j.zhipu.api-key=test-api-key",
-    "langchain4j.zhipu.chat-model.model-name=glm-4.5-air",
-    "langchain4j.zhipu.chat-model.temperature=0.7",
+    "llm.base-url=https://open.bigmodel.cn/api/paas/v4",
+    "llm.api-key=test-api-key",
+    "llm.chat.model=glm-4.5-air",
+    "llm.chat.temperature=0.7",
+    "llm.embedding.enabled=false",
     "workorder.file.output-dir=./test-output/"
 })
 @DisplayName("阶段一：基础能力搭建 - 验收测试")

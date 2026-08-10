@@ -29,6 +29,9 @@ output/
 memory_*.json
 memory_merged_*.json
 
+# Local ML models (ONNX embedding model, etc.)
+models/
+
 # Token/auth files
 .auth_token
 TOKEN_FILE

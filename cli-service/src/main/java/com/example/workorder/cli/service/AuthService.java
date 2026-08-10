@@ -44,9 +44,4 @@ public class AuthService {
         ValidateTokenResult result = validateToken(token);
         return result.getRole();
     }
-
-    public boolean hasAdminRole(String token) {
-        String role = getRoleFromToken(token);
-        return "admin".equalsIgnoreCase(role);
-    }
 }

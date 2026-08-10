@@ -8,6 +8,7 @@ D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\dto\r
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\dto\response\DataCodeDTO.java
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\dto\response\SchemaDTO.java
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\enums\DataCodeEnum.java
+D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\enums\WriteDataCodeEnum.java
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\feign\AuthFeignClient.java
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\feign\DashboardFeignClient.java
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\feign\FlowFeignClient.java
@@ -18,4 +19,6 @@ D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\servi
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\service\QueryService.java
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\service\SchemaService.java
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\service\TraceService.java
+D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\service\WriteService.java
 D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\util\JwtUtil.java
+D:\JavaCode\-WorkOrder\cli-service\src\main\java\com\example\workorder\cli\util\LogUtils.java

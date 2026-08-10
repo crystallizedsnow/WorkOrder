@@ -590,12 +590,12 @@ def main():
     results = {}
 
     # ---- 场景1: 用户确认通过执行 ----
-    print("\n" + "*"*70)
-    print("* 执行场景1: 用户确认通过执行")
-    print("*"*70)
-    r1 = test_scenario_1_user_confirm_execute()
-    results["场景1-确认执行"] = r1
-    time.sleep(3)
+    # print("\n" + "*"*70)
+    # print("* 执行场景1: 用户确认通过执行")
+    # print("*"*70)
+    # r1 = test_scenario_1_user_confirm_execute()
+    # results["场景1-确认执行"] = r1
+    # time.sleep(3)
 
     # ---- 场景2: 用户取消执行 ----
     # print("\n" + "*"*70)

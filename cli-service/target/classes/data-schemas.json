@@ -143,5 +143,103 @@
       "records[].flowName": {"type": "String", "description": "流程名称"},
       "total": {"type": "Long", "description": "总数量"}
     }
+  },
+  "work_order_create": {
+    "name": "创建工单",
+    "description": "新建工单",
+    "inputSchema": {
+      "type": {"type": "Integer", "required": true, "description": "工单类型（0需求，1故障）"},
+      "title": {"type": "String", "required": true, "description": "工单标题"},
+      "content": {"type": "String", "required": true, "description": "工单内容"},
+      "priorityLevel": {"type": "Integer", "required": true, "description": "优先级（0高，1中，2低）"},
+      "flowId": {"type": "Long", "required": true, "description": "流程ID"}
+    },
+    "outputSchema": {
+      "id": {"type": "Long", "description": "工单ID"},
+      "code": {"type": "String", "description": "工单编号"}
+    }
+  },
+  "work_order_handle": {
+    "name": "工单处理",
+    "description": "处理工单（分配/协助/催单/完成/确认/仍有问题）",
+    "inputSchema": {
+      "id": {"type": "Long", "required": true, "description": "工单ID"},
+      "handleType": {"type": "Integer", "required": true, "description": "处理类型（1分配，2协助，3催单，4完成，5确认，6仍有问题）"},
+      "handler": {"type": "String", "required": false, "description": "处理人（分配时必填）"},
+      "content": {"type": "String", "required": false, "description": "处理内容"}
+    },
+    "outputSchema": {
+      "success": {"type": "Boolean", "description": "处理是否成功"}
+    }
+  },
+  "work_order_delete": {
+    "name": "删除工单",
+    "description": "删除工单（需管理员权限）",
+    "inputSchema": {
+      "id": {"type": "Long", "required": true, "description": "工单ID"}
+    },
+    "outputSchema": {
+      "success": {"type": "Boolean", "description": "删除是否成功"}
+    }
+  },
+  "work_order_cancel": {
+    "name": "取消工单",
+    "description": "取消工单",
+    "inputSchema": {
+      "id": {"type": "Long", "required": true, "description": "工单ID"},
+      "reason": {"type": "String", "required": false, "description": "取消原因"}
+    },
+    "outputSchema": {
+      "success": {"type": "Boolean", "description": "取消是否成功"}
+    }
+  },
+  "work_order_approval": {
+    "name": "工单审批",
+    "description": "审批工单（通过/拒绝）",
+    "inputSchema": {
+      "id": {"type": "Long", "required": true, "description": "工单ID"},
+      "approvalStatus": {"type": "Integer", "required": true, "description": "审批状态（1通过，2拒绝）"},
+      "comment": {"type": "String", "required": false, "description": "审批意见"}
+    },
+    "outputSchema": {
+      "success": {"type": "Boolean", "description": "审批是否成功"}
+    }
+  },
+  "flow_create": {
+    "name": "新增流程",
+    "description": "创建工单流程（需管理员权限）",
+    "inputSchema": {
+      "flowName": {"type": "String", "required": true, "description": "流程名称"},
+      "nodes": {"type": "List<Object>", "required": true, "description": "流程节点列表"},
+      "nodes[].nodeName": {"type": "String", "required": true, "description": "节点名称"},
+      "nodes[].nodeType": {"type": "Integer", "required": true, "description": "节点类型（1审批，2处理）"}
+    },
+    "outputSchema": {
+      "flowId": {"type": "Long", "description": "流程ID"}
+    }
+  },
+  "flow_edit": {
+    "name": "编辑流程",
+    "description": "编辑工单流程（需管理员权限）",
+    "inputSchema": {
+      "flowId": {"type": "Long", "required": true, "description": "流程ID"},
+      "flowName": {"type": "String", "required": false, "description": "流程名称"},
+      "nodes": {"type": "List<Object>", "required": false, "description": "流程节点列表"},
+      "nodes[].nodeName": {"type": "String", "required": false, "description": "节点名称"},
+      "nodes[].nodeType": {"type": "Integer", "required": false, "description": "节点类型"}
+    },
+    "outputSchema": {
+      "success": {"type": "Boolean", "description": "编辑是否成功"}
+    }
+  },
+  "flow_delete": {
+    "name": "删除流程",
+    "description": "删除工单流程（需管理员权限）",
+    "inputSchema": {
+      "flowId": {"type": "Long", "required": true, "description": "流程ID"}
+    },
+    "outputSchema": {
+      "success": {"type": "Boolean", "description": "删除是否成功"}
+    }
   }
 }

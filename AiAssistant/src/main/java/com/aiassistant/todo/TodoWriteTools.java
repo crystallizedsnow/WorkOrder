@@ -1,6 +1,6 @@
 package com.aiassistant.todo;
 
-import dev.langchain4j.agent.tool.Tool;
+import com.aiassistant.tool.annotation.Tool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

@@ -1,7 +1,7 @@
 package com.aiassistant.tools;
 
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
+import com.aiassistant.tool.annotation.P;
+import com.aiassistant.tool.annotation.Tool;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -28,9 +28,9 @@ public class FileTools {
     private String outputDir;
 
     @Tool("创建Excel文件并写入数据")
-    public String createExcelFile(@P("文件路径") String filepath, 
-                                   @P("表头") List<String> headers, 
-                                   @P("数据行") List<List<Object>> rows) throws IOException {
+    public String createExcelFile(@P("filepath") String filepath,
+                                   @P("headers") List<String> headers,
+                                   @P("rows") List<List<Object>> rows) throws IOException {
         Path path = validatePath(filepath);
         Files.createDirectories(path.getParent());
 
@@ -70,7 +70,7 @@ public class FileTools {
     }
 
     @Tool("读取Excel文件内容")
-    public String readExcelFile(@P("文件路径") String filepath) throws IOException {
+    public String readExcelFile(@P("filepath") String filepath) throws IOException {
         Path path = validatePath(filepath);
         if (!Files.exists(path)) {
             return "文件不存在: " + filepath;
@@ -118,8 +118,8 @@ public class FileTools {
     }
 
     @Tool("创建Markdown文件")
-    public String createMarkdownFile(@P("文件路径") String filepath, 
-                                      @P("内容") String content) throws IOException {
+    public String createMarkdownFile(@P("filepath") String filepath,
+                                      @P("content") String content) throws IOException {
         Path path = validatePath(filepath);
         Files.createDirectories(path.getParent());
         Files.writeString(path, content, StandardCharsets.UTF_8);
@@ -127,7 +127,7 @@ public class FileTools {
     }
 
     @Tool("读取Markdown文件")
-    public String readMarkdownFile(@P("文件路径") String filepath) throws IOException {
+    public String readMarkdownFile(@P("filepath") String filepath) throws IOException {
         Path path = validatePath(filepath);
         if (!Files.exists(path)) {
             return "文件不存在: " + filepath;
@@ -136,8 +136,8 @@ public class FileTools {
     }
 
     @Tool("创建TXT文件")
-    public String createTxtFile(@P("文件路径") String filepath, 
-                                 @P("内容") String content) throws IOException {
+    public String createTxtFile(@P("filepath") String filepath,
+                                 @P("content") String content) throws IOException {
         Path path = validatePath(filepath);
         Files.createDirectories(path.getParent());
         Files.writeString(path, content, StandardCharsets.UTF_8);
@@ -146,7 +146,7 @@ public class FileTools {
     }
 
     @Tool("读取TXT文件")
-    public String readTxtFile(@P("文件路径") String filepath) throws IOException {
+    public String readTxtFile(@P("filepath") String filepath) throws IOException {
         Path path = validatePath(filepath);
         if (!Files.exists(path)) {
             return "文件不存在: " + filepath;
@@ -155,8 +155,8 @@ public class FileTools {
     }
     
     @Tool("创建TXT文件（别名方法，兼容filename参数）")
-    public String createTxtFileByName(@P("文件名") String filename, 
-                                       @P("内容") String content) throws IOException {
+    public String createTxtFileByName(@P("filename") String filename,
+                                       @P("content") String content) throws IOException {
         return createTxtFile(filename, content);
     }
 

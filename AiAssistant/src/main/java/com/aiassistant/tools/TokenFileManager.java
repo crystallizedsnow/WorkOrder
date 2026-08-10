@@ -1,5 +1,6 @@
 package com.aiassistant.tools;
 
+import com.aiassistant.common.SessionContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.Data;
@@ -19,6 +20,7 @@ public class TokenFileManager {
 
     private static final String TOKEN_DIR = ".workorder";
     private static final String TOKEN_FILE = "token";
+    private static final String ACCOUNT_FILE = "account";
     private static final int TOKEN_EXPIRY_DAYS = 7;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
@@ -38,9 +40,11 @@ public class TokenFileManager {
 
             if (isTokenExpired(tokenInfo)) {
                 log.warn("Token已过期");
+                SessionContext.clearToken();
                 return null;
             }
 
+            SessionContext.setStaticToken(tokenInfo.getToken());
             return tokenInfo;
         } catch (IOException e) {
             log.error("读取Token失败", e);
@@ -65,9 +69,46 @@ public class TokenFileManager {
             String content = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(tokenInfo);
             Files.writeString(tokenFile, content, StandardCharsets.UTF_8);
 
+            SessionContext.setStaticToken(token);
             log.info("Token已保存");
         } catch (IOException e) {
             log.error("保存Token失败", e);
+        }
+    }
+
+    public AccountInfo getAccount() {
+        try {
+            Path accountFile = getAccountFilePath();
+            if (!Files.exists(accountFile)) {
+                return null;
+            }
+
+            String content = Files.readString(accountFile, StandardCharsets.UTF_8);
+            return objectMapper.readValue(content, AccountInfo.class);
+        } catch (IOException e) {
+            log.error("读取账号文件失败", e);
+            return null;
+        }
+    }
+
+    public void saveAccount(String phone, String password) {
+        try {
+            Path tokenDir = getTokenDirectory();
+            if (!Files.exists(tokenDir)) {
+                Files.createDirectories(tokenDir);
+            }
+
+            AccountInfo accountInfo = new AccountInfo();
+            accountInfo.setPhone(phone);
+            accountInfo.setPassword(password);
+
+            Path accountFile = getAccountFilePath();
+            String content = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(accountInfo);
+            Files.writeString(accountFile, content, StandardCharsets.UTF_8);
+
+            log.info("账号凭证已保存");
+        } catch (IOException e) {
+            log.error("保存账号文件失败", e);
         }
     }
 
@@ -92,11 +133,21 @@ public class TokenFileManager {
         return getTokenDirectory().resolve(TOKEN_FILE);
     }
 
+    public Path getAccountFilePath() {
+        return getTokenDirectory().resolve(ACCOUNT_FILE);
+    }
+
     @Data
     public static class TokenInfo {
         private String token;
         private String phone;
         private OffsetDateTime expireTime;
         private OffsetDateTime createTime;
+    }
+
+    @Data
+    public static class AccountInfo {
+        private String phone;
+        private String password;
     }
 }

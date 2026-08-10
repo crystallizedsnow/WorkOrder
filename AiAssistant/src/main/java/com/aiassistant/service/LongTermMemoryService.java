@@ -20,6 +20,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class LongTermMemoryService {
 
+    @Value("${workorder.memory.enabled:false}")
+    private boolean enabled;
+
     @Value("${workorder.memory.base-path:.memory}")
     private String basePath;
 
@@ -32,6 +35,10 @@ public class LongTermMemoryService {
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     public void initializeMemoryDirectory() {
+        if (!enabled) {
+            log.debug("长期记忆已禁用，跳过目录初始化");
+            return;
+        }
         try {
             Path dir = Paths.get(basePath);
             if (!Files.exists(dir)) {
@@ -47,6 +54,10 @@ public class LongTermMemoryService {
     }
 
     public List<MemoryEntry> loadMemories(Long userId) {
+        if (!enabled) {
+            log.debug("长期记忆已禁用，跳过加载");
+            return new ArrayList<>();
+        }
         List<MemoryEntry> memories = new ArrayList<>();
         
         try {
@@ -89,6 +100,10 @@ public class LongTermMemoryService {
     }
 
     public void extractMemories(Long userId, String conversationContent) {
+        if (!enabled) {
+            log.debug("长期记忆已禁用，跳过提取");
+            return;
+        }
         List<MemoryEntry> newMemories = parseConversationForMemories(userId, conversationContent);
         
         for (MemoryEntry memory : newMemories) {

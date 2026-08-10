@@ -13,4 +13,5 @@ public class DataCodeDTO {
     private String name;
     private String description;
     private String permission;
+    private String type;
 }

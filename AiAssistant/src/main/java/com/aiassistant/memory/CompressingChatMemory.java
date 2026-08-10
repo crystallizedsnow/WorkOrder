@@ -1,11 +1,15 @@
 package com.aiassistant.memory;
 
-import dev.langchain4j.data.message.ChatMessage;
+import com.aiassistant.llm.ChatMessage;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 带压缩的聊天记忆包装器（替代 langchain4j 的 ChatMemory）。
+ * 使用自定义 {@link ChatMessage}，读取时触发 {@link ContextCompressor} 压缩。
+ */
 @Slf4j
 public class CompressingChatMemory {
 

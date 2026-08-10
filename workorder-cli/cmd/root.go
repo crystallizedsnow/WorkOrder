@@ -27,32 +27,76 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		firstArg := args[0]
+		// DisableFlagParsing: true 时 cobra 不解析 flag，--dry-run 等标志会出现在 args 中
+		// 需要跳过前导 -- 标志，找到实际的命令名称
+		booleanFlags := map[string]bool{
+			"--dry-run": true,
+			"--debug":   true,
+		}
+		cmdIndex := 0
+		for cmdIndex < len(args) && strings.HasPrefix(args[cmdIndex], "--") {
+			if booleanFlags[args[cmdIndex]] {
+				cmdIndex++
+			} else {
+				// 字符串型 flag（如 --token），跳过 flag 和它的值
+				cmdIndex += 2
+			}
+		}
+		if cmdIndex >= len(args) {
+			cmd.Help()
+			return
+		}
+
+		firstArg := args[cmdIndex]
 
 		switch firstArg {
 		case "list":
 			handleListCommand(args)
 			return
 		case "schema":
-			handleSchemaCommand(args)
+			handleSchemaCommand(args[cmdIndex:])
 			return
 		case "auth":
-			handleAuthCommand(args)
+			handleAuthCommand(args[cmdIndex:])
 			return
 		case "api":
-			handleApiCommand(args)
+			handleApiCommand(args[cmdIndex:])
 			return
 		case "work_order":
-			handleWorkOrderCommand(args)
+			handleWorkOrderCommand(args[cmdIndex:])
 			return
 		case "dashboard":
-			handleDashboardCommand(args)
+			handleDashboardCommand(args[cmdIndex:])
 			return
 		case "flow":
-			handleFlowCommand(args)
+			handleFlowCommand(args[cmdIndex:])
+			return
+		case "work_order_create":
+			handleWorkOrderCreate(args[cmdIndex:])
+			return
+		case "work_order_handle":
+			handleWorkOrderHandle(args[cmdIndex:])
+			return
+		case "work_order_delete":
+			handleWorkOrderDelete(args[cmdIndex:])
+			return
+		case "work_order_cancel":
+			handleWorkOrderCancel(args[cmdIndex:])
+			return
+		case "work_order_approval":
+			handleWorkOrderApproval(args[cmdIndex:])
+			return
+		case "flow_create":
+			handleFlowCreate(args[cmdIndex:])
+			return
+		case "flow_edit":
+			handleFlowEdit(args[cmdIndex:])
+			return
+		case "flow_delete":
+			handleFlowDelete(args[cmdIndex:])
 			return
 		default:
-			handleDataCodeQuery(args)
+			handleDataCodeQuery(args[cmdIndex:])
 			return
 		}
 	},
@@ -94,12 +138,12 @@ func handleDataCodeQuery(args []string) {
 	})
 }
 
-func parseIntArg(args []string, flag string, defaultValue int) int {
+func parseIntArg(args []string, flag string, defaultValue int64) int64 {
 	value := getArgValue(args, flag)
 	if value == "" {
 		return defaultValue
 	}
-	if num, err := strconv.Atoi(value); err == nil {
+	if num, err := strconv.ParseInt(value, 10, 64); err == nil {
 		return num
 	}
 	return defaultValue

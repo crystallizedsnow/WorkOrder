@@ -49,10 +49,6 @@ public class QueryService {
             return createError(404, "dataCode not found: " + dataCode, mdcTraceId);
         }
 
-        if ("admin".equals(e.getPermission()) && !authService.hasAdminRole(token)) {
-            LogUtils.warn(mdcTraceId, "QueryService.query", "Permission denied for dataCode: " + dataCode + ", requires admin role");
-            return createError(403, "Permission denied: admin role required", mdcTraceId);
-        }
 
         try {
             ResponseEntity<?> response = callFeignClient(e, params, token, mdcTraceId);

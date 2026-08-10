@@ -1,17 +1,21 @@
 package com.aiassistant.memory;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatModel;
+import com.aiassistant.llm.ChatMessage;
+import com.aiassistant.llm.ChatModel;
+import com.aiassistant.llm.ChatResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
+/**
+ * 上下文压缩器：当消息数/token 超阈值时，用 LLM 对历史消息做摘要，保留最近若干条。
+ * <p>
+ * 使用自定义 {@link ChatMessage} 与 {@link ChatModel}，不再依赖 langchain4j。
+ */
 @Component
 @Slf4j
 public class ContextCompressor {
@@ -27,9 +31,11 @@ public class ContextCompressor {
         if (messages == null || messages.size() <= MAX_MESSAGES_BEFORE_COMPRESSION) {
             return messages;
         }
-
         int estimatedTokens = estimateTokenCount(messages);
         if (estimatedTokens <= MAX_TOKENS_BEFORE_COMPRESSION) {
+            return messages;
+        }
+        if (messages.size() <= RECENT_MESSAGES_TO_KEEP) {
             return messages;
         }
 
@@ -37,11 +43,6 @@ public class ContextCompressor {
 
         List<ChatMessage> recentMessages = new ArrayList<>();
         List<ChatMessage> oldMessages = new ArrayList<>();
-
-        if (messages.size() <= RECENT_MESSAGES_TO_KEEP) {
-            return messages;
-        }
-
         for (int i = 0; i < messages.size(); i++) {
             if (i >= messages.size() - RECENT_MESSAGES_TO_KEEP) {
                 recentMessages.add(messages.get(i));
@@ -51,88 +52,59 @@ public class ContextCompressor {
         }
 
         String summary = summarizeMessages(oldMessages);
-        
+
         List<ChatMessage> compressedMessages = new ArrayList<>();
-        compressedMessages.add(SystemMessage.from("[历史对话摘要]\n" + summary));
+        compressedMessages.add(ChatMessage.system("[历史对话摘要]\n" + summary));
         compressedMessages.addAll(recentMessages);
 
         log.info("压缩完成: {} 条消息 -> {} 条消息", messages.size(), compressedMessages.size());
-        
         return compressedMessages;
     }
 
     private String summarizeMessages(List<ChatMessage> messages) {
         StringBuilder messageText = new StringBuilder();
         messageText.append("请总结以下对话内容，提取关键信息和用户意图：\n\n");
-        
         for (ChatMessage message : messages) {
-            String role = message instanceof UserMessage ? "用户" : 
-                          message instanceof AiMessage ? "助手" : "系统";
+            String role = "user".equals(message.getRole()) ? "用户"
+                    : "assistant".equals(message.getRole()) ? "助手" : "系统";
             messageText.append(role).append(": ").append(getMessageText(message)).append("\n\n");
         }
-
         try {
             List<ChatMessage> summaryMessages = new ArrayList<>();
-            summaryMessages.add(SystemMessage.from("你是一个对话摘要助手，请用简洁的语言总结对话内容。"));
-            summaryMessages.add(UserMessage.from(messageText.toString()));
-
-            dev.langchain4j.model.chat.response.ChatResponse response = chatModel.chat(summaryMessages);
-            return response.aiMessage().text();
+            summaryMessages.add(ChatMessage.system("你是一个对话摘要助手，请用简洁的语言总结对话内容。"));
+            summaryMessages.add(ChatMessage.user(messageText.toString()));
+            ChatResponse response = chatModel.chat(summaryMessages, Collections.emptyList());
+            return response.getContent();
         } catch (Exception e) {
-            log.error("生成对话摘要失败，使用简单摘要", e);
+            log.error("生成对话摘要失败，使用简单摘要: {}", e.getMessage());
             return generateSimpleSummary(messages);
         }
     }
 
     private String generateSimpleSummary(List<ChatMessage> messages) {
         StringBuilder summary = new StringBuilder();
-        
         int userCount = 0;
         int assistantCount = 0;
-        
         for (ChatMessage message : messages) {
-            if (message instanceof UserMessage) {
+            if ("user".equals(message.getRole())) {
                 userCount++;
-            } else if (message instanceof AiMessage) {
+            } else if ("assistant".equals(message.getRole())) {
                 assistantCount++;
             }
         }
-        
         summary.append(String.format("对话包含 %d 条用户消息和 %d 条助手消息。", userCount, assistantCount));
-        
         if (!messages.isEmpty()) {
-            ChatMessage firstMessage = messages.get(0);
-            ChatMessage lastMessage = messages.get(messages.size() - 1);
-            
-            if (firstMessage instanceof UserMessage) {
-                String firstText = getMessageText(firstMessage);
-                if (firstText.length() > 50) {
-                    firstText = firstText.substring(0, 50) + "...";
-                }
-                summary.append(" 用户最初询问: ").append(firstText);
+            String firstText = getMessageText(messages.get(0));
+            if (firstText.length() > 50) {
+                firstText = firstText.substring(0, 50) + "...";
             }
-            
-            if (lastMessage instanceof AiMessage) {
-                String lastText = getMessageText(lastMessage);
-                if (lastText.length() > 50) {
-                    lastText = lastText.substring(0, 50) + "...";
-                }
-                summary.append(" 助手最后回复: ").append(lastText);
-            }
+            summary.append(" 用户最初询问: ").append(firstText);
         }
-        
         return summary.toString();
     }
 
     private String getMessageText(ChatMessage message) {
-        if (message instanceof UserMessage) {
-            return message.toString();
-        } else if (message instanceof AiMessage) {
-            return ((AiMessage) message).text();
-        } else if (message instanceof SystemMessage) {
-            return message.toString();
-        }
-        return message.toString();
+        return message.getContent() == null ? "" : message.getContent();
     }
 
     private int estimateTokenCount(List<ChatMessage> messages) {
