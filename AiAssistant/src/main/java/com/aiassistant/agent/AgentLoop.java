@@ -119,6 +119,11 @@ public class AgentLoop {
         String longTermMemoryContext = loadLongTermMemory(sessionId);
         messages.add(ChatMessage.system(buildSystemPrompt(longTermMemoryContext)));
 
+        String ragContext = retrieveKnowledge(initialQuery);
+        if (ragContext != null && !ragContext.isEmpty()) {
+            messages.add(ChatMessage.system("[知识库信息]\n" + ragContext));
+        }
+
         List<ChatMessage> history = loadSessionHistory(sessionId);
         if (!history.isEmpty()) {
             messages.addAll(history);
@@ -137,11 +142,6 @@ public class AgentLoop {
             log.info("ReAct循环第 {} 轮", round + 1);
 
             List<ChatMessage> messagesToSend = new ArrayList<>(messages);
-
-            String ragContext = retrieveKnowledge(initialQuery);
-            if (ragContext != null && !ragContext.isEmpty()) {
-                messagesToSend.add(ChatMessage.user("[知识库信息]\n" + ragContext));
-            }
 
             ChatResponse response;
             try {
@@ -204,15 +204,6 @@ public class AgentLoop {
                     messages.add(ChatMessage.tool(toolCall.getId(), toolName, toolResult));
                     conversationHistory.append("工具结果[").append(toolName).append("]: ")
                             .append(toolResult).append("\n");
-
-                    String immediateAnswer = buildImmediateAnswerForToolResult(toolName, toolResult, initialQuery);
-                    if (immediateAnswer != null) {
-                        messages.add(ChatMessage.assistant(immediateAnswer));
-                        conversationHistory.append("助手: ").append(immediateAnswer).append("\n");
-                        chatMemoryStore.updateMessages(sessionId, messages);
-                        extractAndSaveLongTermMemory(sessionId, conversationHistory.toString());
-                        return immediateAnswer;
-                    }
                 }
 
                 // Nag reminder：连续多轮未更新 todo 时提醒
@@ -244,60 +235,6 @@ public class AgentLoop {
                 || toolName.equals("todoList")
                 || toolName.equals("todoUpdate")
                 || toolName.equals("todoClear"));
-    }
-
-    private String buildImmediateAnswerForToolResult(String toolName, String toolResult, String userQuery) {
-        if (!"executeCliCommand".equals(toolName)) {
-            return null;
-        }
-
-        String rawResult = extractToolResultPayload(toolResult);
-        if (rawResult == null || rawResult.isBlank()) {
-            return null;
-        }
-
-        if (rawResult.contains("[dry-run]")) {
-            return rawResult + "\n\n请确认是否继续执行？";
-        }
-
-        if (isConfirmationIntent(userQuery) && looksLikeCliExecutionJson(rawResult)) {
-            return rawResult;
-        }
-
-        return null;
-    }
-
-    private String extractToolResultPayload(String toolResult) {
-        try {
-            JsonNode root = MAPPER.readTree(toolResult);
-            JsonNode resultNode = root.get("result");
-            if (resultNode != null && resultNode.isTextual()) {
-                return resultNode.asText();
-            }
-        } catch (Exception ignored) {
-            // Tool results are usually wrapped JSON, but some tools may return plain text.
-        }
-        return toolResult;
-    }
-
-    private boolean isConfirmationIntent(String userQuery) {
-        if (userQuery == null) {
-            return false;
-        }
-        String normalized = userQuery.trim()
-                .replace("。", "")
-                .replace("！", "")
-                .replace("!", "")
-                .replace(".", "");
-        return normalized.matches("^(确认执行|确认|继续执行|可以执行|执行|确认无误|没问题|是的|好的|继续)$");
-    }
-
-    private boolean looksLikeCliExecutionJson(String rawResult) {
-        String trimmed = rawResult.trim();
-        return trimmed.startsWith("{")
-                && trimmed.contains("\"code\"")
-                && trimmed.contains("\"message\"")
-                && trimmed.contains("\"data\"");
     }
 
     private List<ChatMessage> loadSessionHistory(Long sessionId) {

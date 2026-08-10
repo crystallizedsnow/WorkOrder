@@ -79,12 +79,38 @@ def check_execution_result(result):
     return False
 
 
+def check_no_unrelated_followup(result):
+    """检查真实执行后没有继续输出无关流程说明"""
+    if result is None:
+        return False
+    unrelated_keywords = [
+        "后续确认流程",
+        "确认流程",
+        "流程说明",
+        "确认人",
+        "确认通过",
+        "确认失败",
+        "建议查询",
+        "取消工单功能",
+        "已取消(700)",
+    ]
+    return not any(k in result for k in unrelated_keywords)
+
+
 def check_cancel_message(result):
     """检查响应中是否包含取消确认消息"""
     if result is None:
         return False
     keywords = ["已取消", "取消操作", "不执行", "已停止", "没有执行"]
     return any(k in result for k in keywords)
+
+
+def check_no_dry_run_in_cancel_response(result):
+    """检查取消阶段没有补做dry-run预演"""
+    if result is None:
+        return False
+    dry_run_markers = ["[dry-run]", "执行计划预览", "操作类型", "参数详情"]
+    return not any(marker in result for marker in dry_run_markers)
 
 
 def check_missing_params_error(result, param_name=None):
@@ -135,16 +161,18 @@ def test_scenario_1_user_confirm_execute():
     print(f"  结果: {'PASS' if is_dry_run else 'FAIL'}")
     time.sleep(2)
 
-    # 第2轮: 用户确认执行，Agent应去掉--dry-run真实执行
-    msg2 = "确认执行"
+    # 第2轮: 用户用结构化JSON确认执行，Agent应去掉--dry-run真实执行
+    msg2 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
     result2 = call_agent(session_id, msg2, "场景1-步骤2: 用户确认执行，Agent真实执行写操作")
     time.sleep(5)
 
     print("\n[检查点1-2] 用户确认后是否真实执行（返回JSON执行结果）:")
     is_executed = check_execution_result(result2)
     print(f"  结果: {'PASS' if is_executed else 'FAIL'}")
+    no_unrelated = check_no_unrelated_followup(result2)
+    print(f"  无无关后续说明: {'PASS' if no_unrelated else 'FAIL'}")
 
-    return is_dry_run and is_executed
+    return is_dry_run and is_executed and no_unrelated
 
 
 # ============================================================
@@ -174,16 +202,18 @@ def test_scenario_2_user_cancel():
     print(f"  结果: {'PASS' if is_dry_run else 'FAIL'}")
     time.sleep(2)
 
-    # 第2轮: 用户取消执行
-    msg2 = "取消执行，不要创建这个工单"
+    # 第2轮: 用户用结构化JSON取消执行
+    msg2 = '{"action":"cancel_execute","target":"last_dry_run","confirmed":false}'
     result2 = call_agent(session_id, msg2, "场景2-步骤2: 用户取消，Agent确认取消操作")
     time.sleep(3)
 
     print("\n[检查点2-2] 用户取消后，Agent是否确认取消（不执行写操作）:")
     is_cancelled = check_cancel_message(result2)
     print(f"  结果: {'PASS' if is_cancelled else 'FAIL'}")
+    no_cancel_dry_run = check_no_dry_run_in_cancel_response(result2)
+    print(f"  取消阶段无补做预演: {'PASS' if no_cancel_dry_run else 'FAIL'}")
 
-    return is_dry_run and is_cancelled
+    return is_dry_run and is_cancelled and no_cancel_dry_run
 
 
 # ============================================================
@@ -235,8 +265,8 @@ def test_scenario_3_modify_params():
         print(f"  标题更新为新标题: {'PASS' if has_new_title else 'FAIL'}")
     time.sleep(2)
 
-    # 第3轮: 用户确认执行（使用修改后的参数）
-    msg3 = "确认执行修改后的命令"
+    # 第3轮: 用户用结构化JSON确认执行（使用修改后的参数）
+    msg3 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
     result3 = call_agent(session_id, msg3, "场景3-步骤3: 用户确认，Agent用修改后的参数执行")
     time.sleep(5)
 
@@ -296,8 +326,8 @@ def test_scenario_4_modify_command():
         print(f"  删除操作风险等级为高: {'PASS' if is_high_risk else 'FAIL'}")
     time.sleep(2)
 
-    # 第3轮: 用户确认删除（注意：如果怕真实删除数据，可在此步骤改为取消）
-    msg3 = "确认删除这个工单"
+    # 第3轮: 用户用结构化JSON确认删除（注意：如果怕真实删除数据，可在此步骤改为取消）
+    msg3 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
     result3 = call_agent(session_id, msg3, "场景4-步骤3: 用户确认删除，Agent执行删除")
     time.sleep(5)
 
@@ -338,7 +368,7 @@ def test_scenario_5_chain_operations():
     print("[检查点5-1] 创建工单dry-run预演:", "PASS" if check_dry_run_output(result1) else "FAIL")
     time.sleep(2)
 
-    msg2 = "确认创建"
+    msg2 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
     result2 = call_agent(session_id, msg2, "场景5-步骤2: 确认创建工单")
     time.sleep(5)
     print("[检查点5-2] 创建工单执行结果:", "PASS" if check_execution_result(result2) else "FAIL")
@@ -351,7 +381,7 @@ def test_scenario_5_chain_operations():
     print("[检查点5-3] 分配工单dry-run预演:", "PASS" if check_dry_run_output(result3) else "FAIL")
     time.sleep(2)
 
-    msg4 = "确认分配"
+    msg4 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
     result4 = call_agent(session_id, msg4, "场景5-步骤4: 确认分配工单")
     time.sleep(5)
     print("[检查点5-4] 分配工单执行结果:", "PASS" if check_execution_result(result4) else "FAIL")
@@ -406,8 +436,8 @@ def test_scenario_6_missing_params():
     print(f"  重新dry-run预演: {'PASS' if dry_run_ok else 'FAIL'}")
     time.sleep(2)
 
-    # 第3轮: 用户确认执行
-    msg3 = "确认执行"
+    # 第3轮: 用户用结构化JSON确认执行
+    msg3 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
     result3 = call_agent(session_id, msg3, "场景6-步骤3: 用户确认执行")
     time.sleep(5)
 
@@ -472,8 +502,8 @@ def test_scenario_7_multiple_missing_params():
     print(f"  dry-run预演: {'PASS' if dry_run_ok else 'FAIL'}")
     time.sleep(2)
 
-    # 第4轮: 确认执行
-    msg4 = "确认执行"
+    # 第4轮: 用户用结构化JSON确认执行
+    msg4 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
     result4 = call_agent(session_id, msg4, "场景7-步骤4: 用户确认执行")
     time.sleep(5)
 
@@ -524,8 +554,8 @@ def test_scenario_8_missing_id_or_code():
     print(f"  dry-run预演: {'PASS' if dry_run_ok else 'FAIL'}")
     time.sleep(2)
 
-    # 第3轮: 确认执行
-    msg3 = "确认执行"
+    # 第3轮: 用户用结构化JSON确认执行
+    msg3 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
     result3 = call_agent(session_id, msg3, "场景8-步骤3: 用户确认执行")
     time.sleep(5)
 
@@ -590,20 +620,20 @@ def main():
     results = {}
 
     # ---- 场景1: 用户确认通过执行 ----
-    # print("\n" + "*"*70)
-    # print("* 执行场景1: 用户确认通过执行")
-    # print("*"*70)
-    # r1 = test_scenario_1_user_confirm_execute()
-    # results["场景1-确认执行"] = r1
-    # time.sleep(3)
+    print("\n" + "*"*70)
+    print("* 执行场景1: 用户确认通过执行")
+    print("*"*70)
+    r1 = test_scenario_1_user_confirm_execute()
+    results["场景1-确认执行"] = r1
+    time.sleep(3)
 
     # ---- 场景2: 用户取消执行 ----
-    # print("\n" + "*"*70)
-    # print("* 执行场景2: 用户取消执行")
-    # print("*"*70)
-    # r2 = test_scenario_2_user_cancel()
-    # results["场景2-取消执行"] = r2
-    # time.sleep(3)
+    print("\n" + "*"*70)
+    print("* 执行场景2: 用户取消执行")
+    print("*"*70)
+    r2 = test_scenario_2_user_cancel()
+    results["场景2-取消执行"] = r2
+    time.sleep(3)
 
     # ---- 场景3: 用户修改参数后执行 ----
     # print("\n" + "*"*70)

@@ -179,13 +179,11 @@ public class DynamicPromptGenerator {
             - 常见失败场景：CLI 命令返回 code=401（认证失败）→ 按技能文档读取账号文件、调用 login 重新登录并写入Token缓存，然后重试原命令
             - 不要将失败结果直接转述给用户，应先尝试按技能文档恢复（如重新登录、检查参数等）
 
-            ### 工单写操作硬性流程（来自 SKILL.md，必须遵守）
-            - 写操作包括：创建/处理/删除/取消/审批工单，以及新增/编辑/删除流程
-            - 写操作第一轮执行命令必须带 `--dry-run`，只展示预演计划，不真实写入
-            - 拿到 dry-run 预演结果后，必须原样展示 CLI 返回的预演文本，保留 `[dry-run]`、`操作类型`、`参数详情` 等标记，然后停止工具调用并向用户请求确认
-            - 只有用户明确确认后，才能复制同一条命令并去掉 `--dry-run` 执行真实写操作
-            - 读操作不需要 dry-run
-            - CLI 参数名必须由 Schema 的驼峰字段转换为 kebab-case：`priorityLevel`→`--priority-level`，`flowId`→`--flow-id`，`pageNum`→`--page-num`
+            ### 技能工作流纪律（重要）
+            - 已加载的 SKILL.md 是当前任务的可执行操作规程；当用户请求命中某个技能时，必须完整遵循该技能中的步骤、前置条件、确认点、参数规范和错误处理流程
+            - 不要把中间工具结果当作最终完成；只有当 SKILL.md 要求的全部必要步骤已经完成，或 SKILL.md 明确要求停下来等待用户确认/补充信息时，才给最终回答
+            - 如果 SKILL.md 要求某个工具结果必须原样展示给用户，则最终回答必须保留该工具结果原文，不要改写成摘要
+            - 如果 SKILL.md 要求等待用户确认，则在确认前必须停止后续工具调用；用户确认、取消或修改后，再按同一 SKILL.md 的后续分支继续
 
             ### 输入输出 JSON 示例
 
@@ -226,36 +224,13 @@ public class DynamicPromptGenerator {
               {"id":"call_2","type":"function","function":{"name":"todoWrite","arguments":"{\\"content\\":\\"生成报表\\",\\"priority\\":2}"}}
             ]
 
-            #### 示例 5：工具失败后按技能文档恢复（401 认证失败）
-            工具结果回传（success=false，CLI 返回 401）：
-            {"tool":"getCliCommandSchema","success":false,"result":"{\"code\":401,\"message\":\"Missing Authorization header\",\"data\":null,\"traceId\":\"\"}"}
+            #### 示例 5：工具失败后按技能文档恢复
+            工具结果回传（success=false）：
+            {"tool":"someTool","success":false,"result":"{\"code\":401,\"message\":\"Unauthorized\",\"data\":null}"}
 
-            模型响应（按技能文档读取本地账号文件）：
-            tool_calls:
-            [{"id":"call_3","type":"function","function":{"name":"readTxtFile","arguments":"{\\"filepath\\":\\"C:\\\\\\\\Users\\\\\\\\Crystal\\\\\\\\.workorder\\\\\\\\account\\"}"}}]
-
-            账号文件返回 {"phone":"138xxxx","password":"******"} 后调用登录工具：
-            tool_calls:
-            [{"id":"call_4","type":"function","function":{"name":"login","arguments":"{\\"phone\\":\\"138xxxx\\",\\"password\\":\\"******\\"}"}}]
-
-            登录成功后，重新执行原命令：
-            tool_calls:
-            [{"id":"call_5","type":"function","function":{"name":"getCliCommandSchema","arguments":"{\\"dataCode\\":\\"work_order_page\\"}"}}]
-
-            备用恢复方式：可直接调用 loginFromStoredAccount，或 executeCliCommand("workorder-cli auth login")，成功后同样必须重试原命令。
-
-            #### 示例 6：创建工单必须先 dry-run
-            用户说：创建一个需求类工单，标题"测试"，详情"内容"，高优先级，流程ID为2081909482228682752
-
-            正确的首次写命令调用：
-            tool_calls:
-            [{"id":"call_6","type":"function","function":{"name":"executeCliCommand","arguments":"{\\"CLI命令字符串\\":\\"workorder-cli --dry-run work_order_create --type 0 --title \\\\\\"测试\\\\\\" --content \\\\\\"内容\\\\\\" --priority-level 0 --flow-id 2081909482228682752\\"}"}}]
-
-            严禁首次调用真实写命令：
-            `workorder-cli work_order_create --type 0 --title "测试" --content "内容" --priority-level 0 --flow-id 2081909482228682752`
-
-            严禁使用驼峰参数：
-            `--priorityLevel`、`--flowId`
+            模型响应：
+            <thinking>工具失败，需要先检查已加载 SKILL.md 中对该错误的恢复步骤；如果技能要求先修复认证或参数，再按技能流程继续</thinking>
+            随后的 tool_calls 必须使用 TOOLS JSON 中真实存在的工具名称和参数，并严格遵循 SKILL.md 的恢复步骤；不能编造工具。
             """;
     }
 
@@ -295,8 +270,8 @@ public class DynamicPromptGenerator {
 
             ### 注意
             - <thinking> 标签必须成对出现，内容不能包含 </thinking> 字符串
-            - 默认最终答案使用自然语言；但 CLI 工单写操作真实执行成功或失败后，必须在标签外原样输出工具返回的 JSON 执行结果，不要改写成流程说明或知识库说明
-            - dry-run 预演结果必须在标签外原样输出 CLI 返回文本，并请求用户确认
+            - 默认最终答案使用自然语言；但当已加载的 SKILL.md 要求原样展示工具结果时，必须在标签外保留工具返回原文，不要改写成摘要或其它说明
+            - 当已加载的 SKILL.md 要求等待用户确认/补充信息时，最终回答必须停在该确认/补充请求上，不要继续调用后续工具
             - 推理过程要简短，避免冗长
             """;
     }

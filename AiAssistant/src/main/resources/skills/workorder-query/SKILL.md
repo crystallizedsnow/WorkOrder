@@ -22,8 +22,16 @@ version: 2.0.0
 - 用户请求创建、处理、删除、取消、审批工单，或新增、编辑、删除流程时，均属于写操作。
 - 写操作的第一次 `executeCliCommand` 必须带 `--dry-run`，例如 `workorder-cli --dry-run work_order_create ...`。
 - dry-run 成功后必须把 CLI 返回的预演内容**原文展示**给用户，保留 `[dry-run]`、`操作类型`、`目标端点`、`参数详情` 等文本，不要改写成摘要；随后请求用户确认。用户确认前禁止执行真实写命令。
-- 用户确认后，复制预演命令，去掉 `--dry-run`，其它参数名、顺序、值保持不变，再执行真实写命令。
-- 真实写命令执行完成后，必须把 CLI 返回的 JSON 执行结果**原样展示**给用户，至少保留 `"code"`、`"message"`、`"data"`、`"isSuccess"` 等字段；不要改写成流程说明、知识库说明或纯自然语言摘要。
+- `checkLoginStatus`、认证状态检查、`list` 或 `schema` 都只是前置/中间步骤，不是写操作完成态。除非用户只是在询问登录状态，否则 `checkLoginStatus` 返回 `Token有效` 后必须继续执行用户原始请求对应的 `list/schema/dry-run` 流程，不能停下来回答。
+- 仅完成 `list` 或 `schema` 查询不是写操作的完成态，不能回答“已预演”“已创建”“已处理”。拿到 schema 后必须继续拼接并执行带 `--dry-run` 的预演命令，直到工具结果中真实包含 `[dry-run]`。
+- dry-run 工具结果真实包含 `[dry-run]` 后，当前轮次必须停止工具调用，只把预演原文返回给用户并等待确认、取消或修改；不要在同一轮继续执行去掉 `--dry-run` 的真实写命令。
+- dry-run 后的用户确认/取消必须使用 JSON 协议，Agent 只能根据 JSON 的 `action` 字段进入确认或取消分支，不能把自然语言"确认执行"、"确认删除"等自由文本当作执行授权。
+- 用户初始创建请求中的标题或详情字段可能包含"取消"、"不会实际创建"、"不要创建"等字样，这些只是字段值文本，不能当作取消执行意图。只有用户消息整体是 `cancel_execute` JSON 协议时才表示取消本次 dry-run。
+- 当当前用户输入 JSON 且 `action` 为 `confirm_execute`、`confirmed` 为 `true`、`target` 为 `last_dry_run` 时，表示确认执行上一次 dry-run 预演；必须从当前会话历史中定位**最近一次 assistant tool_call 参数里带 `workorder-cli --dry-run` 的命令字符串**，复制该命令，去掉 `--dry-run`，其它参数名、顺序、值保持不变，再执行真实写命令。禁止根据历史中的工单ID、知识库状态说明或"确认"字面含义改成详情查询、处理工单、确认工单等其它命令。
+- `confirm_execute` 分支是终止分支：真实写命令执行完成后，必须立即停止工具调用，绝对不要继续查询详情、处理工单、确认工单、取消工单或发起任何新的 dry-run。
+- 当当前用户输入 JSON 且 `action` 为 `cancel_execute`、`confirmed` 为 `false`、`target` 为 `last_dry_run` 时，表示取消上一次 dry-run 预演；这是终止分支，必须停止，不要执行任何 CLI 命令，不要补做 dry-run，不要执行真实写命令，也不要调用 `work_order_cancel`。
+- `cancel_execute` 只表示"取消本次预演后的执行"，不是"取消已存在工单"，不要引用工单状态流程、不要说明"已取消(700)"、不要建议使用取消工单功能，直接回复"已取消本次预演，不会执行真实写操作"。
+- 真实写命令执行完成后，必须把 CLI 返回的 JSON 执行结果**原样展示**给用户，至少保留 `"code"`、`"message"`、`"data"`、`"isSuccess"` 等字段；最终回答只能包含该 JSON，最多在 JSON 前加一句"执行成功"。不要查询详情，不要追加工单流程/确认流程/知识库说明，不要改写成纯自然语言摘要。
 - 读操作（列表、详情、搜索、看板、流程查询等）不需要 dry-run。
 - 从 Schema 获取到的驼峰字段名只能用于理解含义，不能直接作为 CLI 参数名；执行 CLI 时必须转为 kebab-case。
 
@@ -39,6 +47,49 @@ version: 2.0.0
 
 反例（错误写法，会报错"参数不能为空"）：`--priorityLevel`、`--flowId`、`--pageNum`、`--pageSize`
 正例（正确写法）：`--priority-level`、`--flow-id`、`--page-num`、`--page-size`
+
+## dry-run确认JSON协议（必须遵守）
+
+写操作 dry-run 后，下一轮用户输入可能是 JSON 字符串。Agent 必须先尝试把用户消息按 JSON 理解：
+
+### 确认执行
+
+```json
+{"action":"confirm_execute","target":"last_dry_run","confirmed":true}
+```
+
+含义：用户确认执行最近一次 dry-run 预演的同一条写命令。Agent 必须从当前会话历史中找到最近一次带 `--dry-run` 的 `workorder-cli` 命令，复制该命令并仅删除 `--dry-run`，然后调用 `executeCliCommand` 执行真实写操作。不要把 `confirm_execute` 理解为工单处理命令中的"确认"动作，不要改成 `work_order_handle`。
+
+执行真实写命令后必须立即停止，最终回答只展示本次真实写命令的返回结果。例如创建工单成功后只返回：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "code": "WO...",
+    "id": 48,
+    "isSuccess": true
+  },
+  "traceId": ""
+}
+```
+
+不要在创建成功后继续调用 `work_order_detail`、`work_order_handle`、`work_order_cancel` 或任何其它命令。不要在 JSON 后追加"后续确认流程"、"流程说明"、"建议查询状态"等知识库内容。
+
+### 取消执行
+
+```json
+{"action":"cancel_execute","target":"last_dry_run","confirmed":false}
+```
+
+含义：用户取消最近一次 dry-run 预演。Agent 必须停止，不要调用真实写命令，直接回复已取消。
+
+取消回复必须简短，例如："已取消本次预演，不会执行真实写操作。" 不要把它解释成取消一个已存在工单，不要提到工单状态 700、流程终止、取消工单功能。
+
+### 修改参数
+
+如果用户不是上述 JSON，而是要求修改参数、修改命令类型或补充参数，Agent 必须根据用户修改后的信息重新执行 dry-run，再次等待 JSON 确认或取消。
 
 ## TraceId生成机制
 
@@ -59,16 +110,19 @@ traceId = str(random.randint(100000000000000000, 999999999999999999))
 
 ### 传递方式
 
-traceId通过环境变量 `WORKORDER_TRACE_ID` 传递给workorder-cli，每次查询必须携带相同的traceId：
+`WORKORDER_TRACE_ID` 由系统执行器注入到 workorder-cli 进程环境中，Agent **不要**把环境变量设置语句拼进 `executeCliCommand` 的命令字符串。
+
+正确命令只包含 `workorder-cli` 本体及其参数：
 
 ```bash
-export WORKORDER_TRACE_ID="123456789012345678"
-workorder-cli work_order page --page-num 1 --page-size 10
+workorder-cli work_order_page --page-num 1 --page-size 10
 ```
+
+不要使用 shell 环境变量语法或命令连接符，例如在命令字符串中加入环境变量设置、`&&`、`;`、管道等。Windows 执行器不会解释这些 shell 语句，命令字符串必须直接以 `workorder-cli` 开头。
 
 ### 注意事项
 
-- 同一个会话中的所有命令必须使用相同的traceId
+- Agent 调用 `executeCliCommand` 时不要手动设置 traceId；执行器会为每次 CLI 进程设置环境变量
 - traceId必须为18位数字，不能包含字母或特殊字符
 - 响应结果中会返回相同的traceId，用于确认请求链路
 
@@ -308,8 +362,8 @@ executeCliCommand("workorder-cli work_order_page --page-num 1 --page-size 10")
    ```
    executeCliCommand("workorder-cli --dry-run work_order_create --type 0 --title \"测试工单-确认执行场景\" --content \"这是一个确认执行的测试工单\" --priority-level 0 --flow-id 2081909482228682752")
    ```
-   **拿到预演结果后必须原样返回给用户并请求确认**，例如："以下是本次创建工单的预执行计划，请确认：\n<CLI dry-run原文结果>\n是否继续执行？"。不要只总结参数；必须保留 `[dry-run]`、`操作类型`、`参数详情` 等原文标记。如果用户指出参数错误，修改参数后回到步骤3重新预演。
-4. 用户明确确认预演结果无误后，复制步骤3的命令，去掉 `--dry-run` 参数后执行写操作：
+   **拿到预演结果后必须原样返回给用户并请求 JSON 确认**，例如："以下是本次创建工单的预执行计划：\n<CLI dry-run原文结果>\n如需执行，请回复：{\"action\":\"confirm_execute\",\"target\":\"last_dry_run\",\"confirmed\":true}；如需取消，请回复：{\"action\":\"cancel_execute\",\"target\":\"last_dry_run\",\"confirmed\":false}"。不要只总结参数；必须保留 `[dry-run]`、`操作类型`、`参数详情` 等原文标记。如果用户指出参数错误，修改参数后回到步骤3重新预演。
+4. 用户输入 `{"action":"confirm_execute","target":"last_dry_run","confirmed":true}` 确认预演结果无误后，复制步骤3的命令，去掉 `--dry-run` 参数后执行写操作：
    ```
    executeCliCommand("workorder-cli work_order_create --type 0 --title \"测试工单-确认执行场景\" --content \"这是一个确认执行的测试工单\" --priority-level 0 --flow-id 2081909482228682752")
    ```
