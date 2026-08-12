@@ -1,6 +1,7 @@
 package com.aiassistant.todo;
 
 import com.aiassistant.tool.annotation.Tool;
+import com.aiassistant.tool.annotation.P;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,7 +14,9 @@ public class TodoWriteTools {
     private final TodoManager todoManager;
 
     @Tool("创建待办任务")
-    public String todoWrite(Long sessionId, String content, Integer priority) {
+    public String todoWrite(@P("sessionId") Long sessionId,
+                            @P("content") String content,
+                            @P("priority") Integer priority) {
         if (priority == null) {
             priority = 1;
         }
@@ -22,12 +25,14 @@ public class TodoWriteTools {
     }
 
     @Tool("查看待办任务列表")
-    public String todoList(Long sessionId) {
+    public String todoList(@P("sessionId") Long sessionId) {
         return todoManager.getTodoSummary(sessionId);
     }
 
     @Tool("更新待办任务状态")
-    public String todoUpdate(Long sessionId, String todoId, String status) {
+    public String todoUpdate(@P("sessionId") Long sessionId,
+                             @P("todoId") String todoId,
+                             @P("status") String status) {
         TodoStatus todoStatus;
         switch (status.toLowerCase()) {
             case "in_progress":
@@ -52,7 +57,7 @@ public class TodoWriteTools {
     }
 
     @Tool("清空所有待办任务")
-    public String todoClear(Long sessionId) {
+    public String todoClear(@P("sessionId") Long sessionId) {
         todoManager.clearTodos(sessionId);
         return "所有任务已清空";
     }

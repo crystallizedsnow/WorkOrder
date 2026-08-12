@@ -70,6 +70,8 @@ func handleWorkOrderCreate(args []string) {
 	priorityLevel := parseIntArg(args, "--priority-level", -1)
 	flowId := parseIntArg(args, "--flow-id", 0)
 	deadlineTime := parseIntArg(args, "--deadline-time", 0)
+	accessoryUrl := getArgValue(args, "--accessory-url")
+	accessoryName := getArgValue(args, "--accessory-name")
 
 	if workType == -1 {
 		output.PrintError(4, "type参数不能为空")
@@ -101,6 +103,12 @@ func handleWorkOrderCreate(args []string) {
 	}
 	if deadlineTime != 0 {
 		params["deadlineTime"] = deadlineTime
+	}
+	if accessoryUrl != "" {
+		params["accessoryUrl"] = accessoryUrl
+	}
+	if accessoryName != "" {
+		params["accessoryName"] = accessoryName
 	}
 
 	if checkDryRun() {

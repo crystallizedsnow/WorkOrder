@@ -18,9 +18,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @TestPropertySource(properties = {
-    "llm.base-url=https://open.bigmodel.cn/api/paas/v4",
+    "llm.chat.url=https://open.bigmodel.cn/api/paas/v4/chat/completions",
     "llm.api-key=test-api-key",
-    "llm.chat.model=glm-4.5-air",
+    "llm.chat.model=glm-4.6v",
     "llm.chat.temperature=0.7",
     "llm.embedding.enabled=false",
     "workorder.file.output-dir=./test-output/"

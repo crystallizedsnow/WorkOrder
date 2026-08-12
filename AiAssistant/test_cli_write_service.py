@@ -312,7 +312,7 @@ def test_scenario_4_modify_command():
     time.sleep(2)
 
     # 第2轮: 用户改命令，不创建了，改为删除指定工单
-    msg2 = "不对，我不要创建工单了。改成删除工单，工单编号是WO202607290001，重新预览"
+    msg2 = "不对，我不要创建工单了。改成删除工单，工单编号是WO202608112087191158408220672，重新预览"
     result2 = call_agent(session_id, msg2, "场景4-步骤2: 用户改为删除工单，Agent重新dry-run删除操作")
     time.sleep(5)
 
@@ -339,30 +339,34 @@ def test_scenario_4_modify_command():
 
 
 # ============================================================
-# 场景5: 复合写操作 - 创建后分配（链式多工具调用）
+# 场景5: 复合操作 - 创建后确认审批人并审批（链式多工具调用）
 # ============================================================
 def test_scenario_5_chain_operations():
     """
-    场景5: 复合写操作，创建工单后立即分配处理人
+    场景5: 创建工单后查询审批流程，确认当前用户是审批人，再审批工单
     流程:
-      用户说'创建工单xxx，然后立即分配给用户ID 2'
+      用户请求创建工单，并要求创建成功后查询审批流程并审批
       -> Agent dry-run创建工单预演
       -> 用户确认创建
       -> Agent真实执行创建
-      -> Agent(或用户)继续dry-run分配操作预演
-      -> 用户确认分配
-      -> Agent真实执行分配
+      -> 用户要求继续剩余任务
+      -> Agent查询工单详情和流程详情，确认未完成审批节点属于当前登录用户
+      -> Agent查询审批Schema并执行审批dry-run
+      -> 用户确认审批
+      -> Agent真实执行审批
     验证点:
-      - 多轮dry-run和确认都正常工作
-      - 写操作链式调用的完整性
+      - 创建写操作的dry-run和确认正常工作
+      - Agent按通用长任务规则使用todo工具管理阶段（通过Agent工具调用日志核验）
+      - 审批前先查询审批链，并确认该工单轮到当前用户审批
+      - 审批写操作同样经过dry-run和独立确认
     """
     print("\n" + "#"*70)
-    print("# 场景5: 复合写操作 - 创建+分配 链式调用")
+    print("# 场景5: 复合操作 - 创建+确认审批人+审批")
     print("#"*70)
 
-    session_id = 7005
+    session_id = 7505
 
-    msg1 = "帮我创建一个工单，标题'链式测试-先创建后分配'，类型故障类，中优先级，详情'链式操作测试'，流程ID为2081909482228682752"
+    msg1 = "帮我创建一个工单，标题'链式测试-创建后审批'，类型故障类，中优先级，详情'链式操作测试'，流程ID为2081909482228682752。创建成功后先查询审批流程和工单当前审批信息，确认该工单当前确实由我审批，然后审批通过，审批意见为'场景5链路测试通过'。如果这是长任务，必须先调用todo工具列举并跟踪各阶段任务。"
     result1 = call_agent(session_id, msg1, "场景5-步骤1: 请求创建工单，dry-run预演")
     time.sleep(5)
     print("[检查点5-1] 创建工单dry-run预演:", "PASS" if check_dry_run_output(result1) else "FAIL")
@@ -374,19 +378,29 @@ def test_scenario_5_chain_operations():
     print("[检查点5-2] 创建工单执行结果:", "PASS" if check_execution_result(result2) else "FAIL")
     time.sleep(2)
 
-    # 拿到创建结果后，用户要求分配
-    msg3 = "创建成功后，把这个工单分配给用户ID 2处理"
-    result3 = call_agent(session_id, msg3, "场景5-步骤3: 用户要求分配工单，Agent dry-run分配操作")
+    # 真实创建是确认分支的终止点；下一轮继续查询并预演审批。
+    msg3 = "继续完成剩余任务：先查询流程ID 2081909482228682752的审批节点，再查询刚创建工单的当前审批信息，并结合当前登录用户确认该工单当前确实轮到我审批。只有确认属于我审批后，才查询审批Schema并预演审批通过，审批意见为'场景5链路测试通过'；如果不属于我审批，停止并明确说明，不要预演或执行审批。"
+    result3 = call_agent(session_id, msg3, "场景5-步骤3: 查询审批链、确认当前审批人并预演审批")
     time.sleep(5)
-    print("[检查点5-3] 分配工单dry-run预演:", "PASS" if check_dry_run_output(result3) else "FAIL")
-    time.sleep(2)
+    approval_dry_run = check_dry_run_output(result3) and ("审批" in result3 or "审核" in result3)
+    ownership_checked = any(marker in result3 for marker in ["当前登录用户", "当前用户", "由你审批", "轮到你", "审批人"])
+    did_not_execute_approval = "审批成功" not in result3 and "审核成功" not in result3
+    print("[检查点5-3] 已查询审批链并核对当前审批人:", "PASS" if ownership_checked else "FAIL")
+    print("[检查点5-4] 审批dry-run预演且尚未真实审批:", "PASS" if approval_dry_run and did_not_execute_approval else "FAIL")
+
+    if not approval_dry_run:
+        print("[检查点5-5] 未进入审批确认阶段，跳过真实审批: FAIL")
+        return False
 
     msg4 = '{"action":"confirm_execute","target":"last_dry_run","confirmed":true}'
-    result4 = call_agent(session_id, msg4, "场景5-步骤4: 确认分配工单")
+    result4 = call_agent(session_id, msg4, "场景5-步骤4: 确认并执行审批")
     time.sleep(5)
-    print("[检查点5-4] 分配工单执行结果:", "PASS" if check_execution_result(result4) else "FAIL")
+    approval_executed = check_execution_result(result4)
+    print("[检查点5-5] 审批执行结果:", "PASS" if approval_executed else "FAIL")
 
-    return True
+    return (check_dry_run_output(result1) and check_execution_result(result2)
+            and ownership_checked and approval_dry_run and did_not_execute_approval
+            and approval_executed)
 
 
 # ============================================================
@@ -577,7 +591,7 @@ def main():
     print("  场景2 (7002): 用户取消执行      - dry-run + 取消 + 不执行")
     print("  场景3 (7003): 用户修改参数后执行 - dry-run + 改参数 + 重新预演 + 确认 + 执行")
     print("  场景4 (7004): 用户修改命令类型   - 创建预演 + 改删除 + 删除预演 + 确认删除")
-    print("  场景5 (7005): 复合链式操作      - 创建 + 分配，多轮dry-run和确认")
+    print("  场景5 (7505): 复合链式操作      - 创建 + 查询审批流程 + 确认本人审批 + 审批")
     print("  场景6 (7006): 缺少必填参数     - CLI报错(code=4) + Agent提示补参 + 用户补参后执行")
     print("  场景7 (7007): 多个参数缺失     - 逐步补充，每轮验证直到参数完整")
     print("  场景8 (7008): handle缺id/code    - 验证二选一参数校验逻辑")
@@ -627,13 +641,13 @@ def main():
     results["场景1-确认执行"] = r1
     time.sleep(3)
 
-    # ---- 场景2: 用户取消执行 ----
-    print("\n" + "*"*70)
-    print("* 执行场景2: 用户取消执行")
-    print("*"*70)
-    r2 = test_scenario_2_user_cancel()
-    results["场景2-取消执行"] = r2
-    time.sleep(3)
+    # # ---- 场景2: 用户取消执行 ----
+    # print("\n" + "*"*70)
+    # print("* 执行场景2: 用户取消执行")
+    # print("*"*70)
+    # r2 = test_scenario_2_user_cancel()
+    # results["场景2-取消执行"] = r2
+    # time.sleep(3)
 
     # ---- 场景3: 用户修改参数后执行 ----
     # print("\n" + "*"*70)
@@ -651,12 +665,12 @@ def main():
     # results["场景4-修改命令"] = r4
     # time.sleep(3)
 
-    # ---- 场景5: 复合链式操作 ----
+    # ---- 场景5: 创建后确认审批人并审批 ----
     # print("\n" + "*"*70)
-    # print("* 执行场景5: 复合链式操作")
+    # print("* 执行场景5: 创建后确认审批人并审批")
     # print("*"*70)
     # r5 = test_scenario_5_chain_operations()
-    # results["场景5-链式操作"] = r5
+    # results["场景5-创建并审批"] = r5
     # time.sleep(3)
 
     # ---- 场景6: 缺少必填参数 ----

@@ -42,7 +42,7 @@ public class ZhipuChatModel implements ChatModel {
             ObjectNode requestBody = buildRequestBody(messages, tools);
 
             JsonNode response = restClient.post()
-                    .uri("/chat/completions")
+                    .uri(llmConfig.getChat().getUrl())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(requestBody)
                     .retrieve()

@@ -8,7 +8,7 @@ import org.springframework.web.client.RestClient;
 import lombok.Data;
 
 /**
- * LLM 配置，统一从 application.yaml 读取 base-url / api-key / 模型参数。
+ * LLM 配置，统一从 application.yaml 读取请求 URL、api-key 和模型参数。
  * 替代原 ZhipuConfig（不再依赖 langchain4j 的 ZhipuAiChatModel）。
  */
 @Configuration
@@ -18,9 +18,6 @@ public class LlmConfig {
 
     private String provider = "zhipu";
 
-    /** HTTP API 基础地址，例如 https://open.bigmodel.cn/api/paas/v4 */
-    private String baseUrl;
-
     private String apiKey;
 
     private Chat chat = new Chat();
@@ -29,7 +26,9 @@ public class LlmConfig {
 
     @Data
     public static class Chat {
-        private String model = "glm-4.5-air";
+        /** 完整聊天接口地址，例如 https://open.bigmodel.cn/api/paas/v4/chat/completions */
+        private String url;
+        private String model = "glm-4.6v";
         private double temperature = 0.7;
         private int maxTokens = 4096;
         /** 单次请求超时（毫秒） */
@@ -51,7 +50,6 @@ public class LlmConfig {
     @Bean
     public RestClient llmRestClient() {
         return RestClient.builder()
-                .baseUrl(baseUrl == null ? "" : baseUrl)
                 .defaultHeader("Authorization", "Bearer " + (apiKey == null ? "" : apiKey))
                 .defaultHeader("Content-Type", "application/json")
                 .build();

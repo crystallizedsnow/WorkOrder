@@ -30,6 +30,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * ReAct Agent 主循环。
@@ -136,7 +137,8 @@ public class AgentLoop {
         conversationHistory.append("用户: ").append(initialQuery).append("\n");
 
         int roundsWithoutTodoUpdate = 0;
-        boolean hasActiveTodos = false;
+        boolean hasActiveTodos = todoManager.hasActiveTodos(sessionId);
+        boolean longTask = isLongTask(initialQuery) || hasActiveTodos;
 
         for (int round = 0; round < MAX_ROUNDS; round++) {
             log.info("ReAct循环第 {} 轮", round + 1);
@@ -166,6 +168,18 @@ public class AgentLoop {
                             .build());
 
             if (response.hasToolCalls()) {
+                boolean containsBusinessTool = response.getToolCalls().stream()
+                        .anyMatch(tc -> !isTodoTool(tc.getFunction().getName()));
+                boolean containsTodoWrite = response.getToolCalls().stream()
+                        .anyMatch(tc -> "todoWrite".equals(tc.getFunction().getName()));
+                if (longTask && containsBusinessTool && todoManager.getTodos(sessionId).size() < 2) {
+                    messages.add(ChatMessage.user("[系统门禁] 当前请求是多阶段长任务。调用业务工具前，必须先用 todoWrite 为至少两个独立、可验证的业务阶段建立任务；本轮业务工具不会执行。"));
+                    if (!containsTodoWrite) {
+                        log.warn("长任务未建立 todo，拒绝推进业务工具 - sessionId: {}", sessionId);
+                    }
+                    continue;
+                }
+
                 // 记录 assistant 的工具调用请求（格式化输出）
                 messages.add(ChatMessage.assistantWithToolCalls(responseText, response.getToolCalls()));
 
@@ -183,6 +197,15 @@ public class AgentLoop {
                     String toolName = toolCall.getFunction().getName();
                     String arguments = toolCall.getFunction().getArguments();
                     log.info("执行工具调用: {} args={}", toolName, arguments);
+
+                    if (isUnconfirmedDryRunExecution(messages, toolName, arguments, initialQuery)) {
+                        String rejected = wrapToolResult(toolName, false,
+                                "写操作未获授权：真实命令与最近一次 dry-run 相同，但当前用户消息不是有效的 confirm_execute JSON。必须停止并等待确认。");
+                        messages.add(ChatMessage.tool(toolCall.getId(), toolName, rejected));
+                        conversationHistory.append("工具结果[").append(toolName).append("]: ").append(rejected).append("\n");
+                        log.warn("拒绝未确认的真实写命令 - sessionId: {}", sessionId);
+                        continue;
+                    }
 
                     hookRegistry.executeHooks(HookType.PRE_TOOL_USE,
                             HookContext.builder()
@@ -235,6 +258,104 @@ public class AgentLoop {
                 || toolName.equals("todoList")
                 || toolName.equals("todoUpdate")
                 || toolName.equals("todoClear"));
+    }
+
+    /**
+     * 通用长任务识别：同时出现多个动作和明确的依赖/顺序关系。
+     * 不包含任何工单领域词，避免把业务规则固化到 Agent 主循环。
+     */
+    private boolean isLongTask(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String normalized = query.toLowerCase(Locale.ROOT);
+        String[] actionMarkers = {"创建", "查询", "生成", "修改", "删除", "分析", "验证", "说明", "告诉", "执行", "审批", "分配",
+                "create", "query", "search", "generate", "update", "delete", "analyze", "verify", "explain", "execute"};
+        int actionCount = 0;
+        for (String marker : actionMarkers) {
+            if (normalized.contains(marker)) {
+                actionCount++;
+            }
+        }
+        String[] dependencyMarkers = {"然后", "之后", "完成后", "成功后", "再", "最后", "接着", "并且", "并告诉", "先", "后",
+                "then", "after", "before", "finally", "next"};
+        boolean hasDependency = false;
+        for (String marker : dependencyMarkers) {
+            if (normalized.contains(marker)) {
+                hasDependency = true;
+                break;
+            }
+        }
+        return actionCount >= 3 && hasDependency;
+    }
+
+    private boolean isUnconfirmedDryRunExecution(List<ChatMessage> messages, String toolName,
+                                                  String arguments, String currentUserMessage) {
+        if (!"executeCliCommand".equals(toolName)) {
+            return false;
+        }
+        String currentCommand = extractCliCommand(arguments);
+        if (currentCommand == null || currentCommand.contains("--dry-run")) {
+            return false;
+        }
+        String latestDryRun = findLatestDryRunCommand(messages);
+        if (latestDryRun == null || !removeDryRun(latestDryRun).equals(normalizeCommand(currentCommand))) {
+            return false;
+        }
+        return !isValidConfirmation(currentUserMessage);
+    }
+
+    private String findLatestDryRunCommand(List<ChatMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage message = messages.get(i);
+            if (message.getToolCalls() == null) {
+                continue;
+            }
+            for (int j = message.getToolCalls().size() - 1; j >= 0; j--) {
+                ToolCall call = message.getToolCalls().get(j);
+                if ("executeCliCommand".equals(call.getFunction().getName())) {
+                    String command = extractCliCommand(call.getFunction().getArguments());
+                    if (command != null && command.contains("--dry-run")) {
+                        return command;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String extractCliCommand(String arguments) {
+        try {
+            JsonNode node = MAPPER.readTree(arguments);
+            String[] keys = {"CLI命令字符串", "command", "content"};
+            for (String key : keys) {
+                if (node.hasNonNull(key)) {
+                    return normalizeCommand(node.get(key).asText());
+                }
+            }
+        } catch (Exception ignored) {
+            // 无法解析时交给原工具参数校验。
+        }
+        return null;
+    }
+
+    private String removeDryRun(String command) {
+        return normalizeCommand(command.replaceFirst("(?i)\\s+--dry-run(?=\\s)", ""));
+    }
+
+    private String normalizeCommand(String command) {
+        return command == null ? null : command.trim().replaceAll("\\s+", " ");
+    }
+
+    private boolean isValidConfirmation(String message) {
+        try {
+            JsonNode node = MAPPER.readTree(message);
+            return "confirm_execute".equals(node.path("action").asText())
+                    && "last_dry_run".equals(node.path("target").asText())
+                    && node.path("confirmed").asBoolean(false);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private List<ChatMessage> loadSessionHistory(Long sessionId) {

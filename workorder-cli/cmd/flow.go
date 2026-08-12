@@ -34,10 +34,10 @@ func handleFlowCommand(args []string) {
 }
 
 func handleFlowGetById(args []string) {
-	flowId := parseIntArg(args, "--id", 0)
+	flowId := parseIntArg(args, "--flow-id", 0)
 
 	if flowId == 0 {
-		output.PrintError(4, "id参数不能为空")
+		output.PrintError(4, "flow-id参数不能为空")
 		return
 	}
 

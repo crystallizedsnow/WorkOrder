@@ -51,6 +51,14 @@
       "priorityLevelDesc": {"type": "String", "description": "优先级描述"},
       "status": {"type": "Integer", "description": "状态"},
       "statusDesc": {"type": "String", "description": "状态描述"},
+      "auditorInfo": {"type": "List<Object>", "description": "审批节点及审批人信息"},
+      "auditorInfo[].userId": {"type": "Long", "description": "审批人用户ID"},
+      "auditorInfo[].userName": {"type": "String", "description": "审批人姓名"},
+      "auditorInfo[].finished": {"type": "Boolean", "description": "是否已完成审批"},
+      "auditorInfo[].remark": {"type": "String", "description": "审批意见"},
+      "distributerInfo": {"type": "Object", "description": "派单节点信息"},
+      "handlerInfo": {"type": "List<Object>", "description": "处理节点信息"},
+      "checkerInfo": {"type": "Object", "description": "验收节点信息"},
       "createTime": {"type": "String", "description": "创建时间"},
       "updateTime": {"type": "String", "description": "更新时间"},
       "cancelTime": {"type": "String", "description": "取消时间"},
@@ -125,9 +133,12 @@
       "flowId": {"type": "String", "description": "流程ID"},
       "flowName": {"type": "String", "description": "流程名称"},
       "nodes": {"type": "List<Object>", "description": "节点列表"},
-      "nodes[].nodeId": {"type": "String", "description": "节点ID"},
-      "nodes[].nodeName": {"type": "String", "description": "节点名称"},
-      "nodes[].nodeType": {"type": "Integer", "description": "节点类型"}
+      "nodes[].id": {"type": "Long", "description": "节点ID"},
+      "nodes[].nodeType": {"type": "Integer", "description": "节点类型（2审批，3指派，5验收）"},
+      "nodes[].nodeTypeDesc": {"type": "String", "description": "节点类型描述"},
+      "nodes[].handlerId": {"type": "Long", "description": "节点处理人ID"},
+      "nodes[].handlerName": {"type": "String", "description": "节点处理人姓名"},
+      "nodes[].isLastNode": {"type": "Boolean", "description": "是否为流程终止节点"}
     }
   },
   "flow_page": {
@@ -152,7 +163,10 @@
       "title": {"type": "String", "required": true, "description": "工单标题"},
       "content": {"type": "String", "required": true, "description": "工单内容"},
       "priorityLevel": {"type": "Integer", "required": true, "description": "优先级（0高，1中，2低）"},
-      "flowId": {"type": "Long", "required": true, "description": "流程ID"}
+      "flowId": {"type": "Long", "required": true, "description": "流程ID"},
+      "deadlineTime": {"type": "Long", "required": false, "description": "截止时间"},
+      "accessoryUrl": {"type": "String", "required": false, "description": "附件URL"},
+      "accessoryName": {"type": "String", "required": false, "description": "附件文件名"}
     },
     "outputSchema": {
       "id": {"type": "Long", "description": "工单ID"},
@@ -163,10 +177,11 @@
     "name": "工单处理",
     "description": "处理工单（分配/协助/催单/完成/确认/仍有问题）",
     "inputSchema": {
-      "id": {"type": "Long", "required": true, "description": "工单ID"},
+      "id": {"type": "Long", "required": false, "description": "工单ID，与工单编号二选一"},
+      "code": {"type": "String", "required": false, "description": "工单编号，与工单ID二选一"},
       "handleType": {"type": "Integer", "required": true, "description": "处理类型（1分配，2协助，3催单，4完成，5确认，6仍有问题）"},
-      "handler": {"type": "String", "required": false, "description": "处理人（分配时必填）"},
-      "content": {"type": "String", "required": false, "description": "处理内容"}
+      "assignedUserId": {"type": "Long", "required": false, "description": "安排的用户ID（分配或请求协助时必填；催单、确认完成、仍有问题时不得传）"},
+      "remark": {"type": "String", "required": false, "description": "操作备注（分配要求、请求协助要求或验收意见）"}
     },
     "outputSchema": {
       "success": {"type": "Boolean", "description": "处理是否成功"}
@@ -176,7 +191,8 @@
     "name": "删除工单",
     "description": "删除工单（需管理员权限）",
     "inputSchema": {
-      "id": {"type": "Long", "required": true, "description": "工单ID"}
+      "id": {"type": "Long", "required": false, "description": "工单ID，与工单编号二选一"},
+      "code": {"type": "String", "required": false, "description": "工单编号，与工单ID二选一"}
     },
     "outputSchema": {
       "success": {"type": "Boolean", "description": "删除是否成功"}
@@ -186,8 +202,8 @@
     "name": "取消工单",
     "description": "取消工单",
     "inputSchema": {
-      "id": {"type": "Long", "required": true, "description": "工单ID"},
-      "reason": {"type": "String", "required": false, "description": "取消原因"}
+      "id": {"type": "Long", "required": false, "description": "工单ID，与工单编号二选一"},
+      "code": {"type": "String", "required": false, "description": "工单编号，与工单ID二选一"}
     },
     "outputSchema": {
       "success": {"type": "Boolean", "description": "取消是否成功"}
@@ -197,9 +213,10 @@
     "name": "工单审批",
     "description": "审批工单（通过/拒绝）",
     "inputSchema": {
-      "id": {"type": "Long", "required": true, "description": "工单ID"},
-      "approvalStatus": {"type": "Integer", "required": true, "description": "审批状态（1通过，2拒绝）"},
-      "comment": {"type": "String", "required": false, "description": "审批意见"}
+      "id": {"type": "Long", "required": false, "description": "工单ID，与工单编号二选一"},
+      "code": {"type": "String", "required": false, "description": "工单编号，与工单ID二选一"},
+      "isApproved": {"type": "Boolean", "required": true, "description": "是否审核通过"},
+      "remark": {"type": "String", "required": false, "description": "审核意见"}
     },
     "outputSchema": {
       "success": {"type": "Boolean", "description": "审批是否成功"}
@@ -211,8 +228,14 @@
     "inputSchema": {
       "flowName": {"type": "String", "required": true, "description": "流程名称"},
       "nodes": {"type": "List<Object>", "required": true, "description": "流程节点列表"},
-      "nodes[].nodeName": {"type": "String", "required": true, "description": "节点名称"},
-      "nodes[].nodeType": {"type": "Integer", "required": true, "description": "节点类型（1审批，2处理）"}
+      "nodes[].handlerId": {"type": "Long", "required": true, "description": "审核节点处理人ID"},
+      "nodes[].handlerName": {"type": "String", "required": true, "description": "审核节点处理人名称"},
+      "distributeNode": {"type": "Object", "required": true, "description": "分配节点"},
+      "distributeNode.handlerId": {"type": "Long", "required": true, "description": "分配节点处理人ID"},
+      "distributeNode.handlerName": {"type": "String", "required": true, "description": "分配节点处理人名称"},
+      "checkNode": {"type": "Object", "required": true, "description": "验收节点"},
+      "checkNode.handlerId": {"type": "Long", "required": true, "description": "验收节点处理人ID"},
+      "checkNode.handlerName": {"type": "String", "required": true, "description": "验收节点处理人名称"}
     },
     "outputSchema": {
       "flowId": {"type": "Long", "description": "流程ID"}
@@ -223,10 +246,16 @@
     "description": "编辑工单流程（需管理员权限）",
     "inputSchema": {
       "flowId": {"type": "Long", "required": true, "description": "流程ID"},
-      "flowName": {"type": "String", "required": false, "description": "流程名称"},
-      "nodes": {"type": "List<Object>", "required": false, "description": "流程节点列表"},
-      "nodes[].nodeName": {"type": "String", "required": false, "description": "节点名称"},
-      "nodes[].nodeType": {"type": "Integer", "required": false, "description": "节点类型"}
+      "flowName": {"type": "String", "required": true, "description": "流程名称"},
+      "nodes": {"type": "List<Object>", "required": true, "description": "流程节点列表"},
+      "nodes[].handlerId": {"type": "Long", "required": true, "description": "审核节点处理人ID"},
+      "nodes[].handlerName": {"type": "String", "required": true, "description": "审核节点处理人名称"},
+      "distributeNode": {"type": "Object", "required": true, "description": "分配节点"},
+      "distributeNode.handlerId": {"type": "Long", "required": true, "description": "分配节点处理人ID"},
+      "distributeNode.handlerName": {"type": "String", "required": true, "description": "分配节点处理人名称"},
+      "checkNode": {"type": "Object", "required": true, "description": "验收节点"},
+      "checkNode.handlerId": {"type": "Long", "required": true, "description": "验收节点处理人ID"},
+      "checkNode.handlerName": {"type": "String", "required": true, "description": "验收节点处理人名称"}
     },
     "outputSchema": {
       "success": {"type": "Boolean", "description": "编辑是否成功"}
