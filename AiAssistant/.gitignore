@@ -22,6 +22,7 @@ Thumbs.db
 
 # Configuration files with personal information
 src/main/resources/application.yaml
+src/main/resources/application-local.yaml
 
 # Memory/output directories
 .memory/

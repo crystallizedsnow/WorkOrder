@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 
@@ -28,7 +29,11 @@ public class Staff {
     private String name;
 
     @Schema(description = "密码")
+    @ToString.Exclude
     private String password;
+
+    @Schema(description = "认证版本，改密或全会话注销时递增")
+    private Integer authVersion;
 
     @Schema(description = "所属公司代码")
     private String companyCode;

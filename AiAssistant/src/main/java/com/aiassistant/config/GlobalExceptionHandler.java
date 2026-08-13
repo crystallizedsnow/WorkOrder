@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.web.reactive.function.client.WebClientException;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
@@ -21,6 +22,17 @@ import java.util.UUID;
 public class GlobalExceptionHandler {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatusException(ResponseStatusException e) {
+        log.warn("Request rejected: status={} reason={}", e.getStatusCode().value(), e.getReason());
+        Map<String, Object> response = new HashMap<>();
+        response.put("code", e.getStatusCode().value());
+        response.put("message", e.getReason() == null ? "请求被拒绝" : e.getReason());
+        response.put("data", null);
+        response.put("traceId", generateTraceId());
+        return ResponseEntity.status(e.getStatusCode()).contentType(MediaType.APPLICATION_JSON).body(response);
+    }
 
     @ExceptionHandler(ServiceException.class)
     public Flux<String> handleServiceException(ServiceException e) {

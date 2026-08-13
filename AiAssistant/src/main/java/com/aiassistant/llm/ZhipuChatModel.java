@@ -60,6 +60,7 @@ public class ZhipuChatModel implements ChatModel {
         body.put("model", llmConfig.getChat().getModel());
         body.put("temperature", llmConfig.getChat().getTemperature());
         body.put("max_tokens", llmConfig.getChat().getMaxTokens());
+        body.putObject("thinking").put("type", llmConfig.getChat().getThinkingType());
 
         ArrayNode messagesNode = body.putArray("messages");
         for (ChatMessage message : messages) {
@@ -142,14 +143,42 @@ public class ZhipuChatModel implements ChatModel {
         JsonNode toolCallsNode = message.path("tool_calls");
         if (toolCallsNode.isArray()) {
             for (JsonNode callNode : toolCallsNode) {
+                JsonNode functionNode = callNode.path("function");
+                // OpenAI-compatible providers are not completely consistent here:
+                // some return {function:{name,arguments}}, while others flatten the
+                // same fields onto the tool_call object.  Accept both shapes, but do
+                // not turn a malformed item into a call to the empty tool name.
+                String name = text(functionNode, "name", text(callNode, "name", ""));
+                String arguments = text(functionNode, "arguments", text(callNode, "arguments", "{}"));
+                if (name.isBlank()) {
+                    log.warn("忽略缺少工具名称的 tool_call: id={}, type={}",
+                            text(callNode, "id", ""), text(callNode, "type", "function"));
+                    continue;
+                }
                 ToolCall.FunctionCall function = ToolCall.FunctionCall.builder()
-                        .name(callNode.path("function").path("name").asText())
-                        .arguments(callNode.path("function").path("arguments").asText("{}"))
+                        .name(name)
+                        .arguments(arguments.isBlank() ? "{}" : arguments)
                         .build();
                 toolCalls.add(ToolCall.builder()
-                        .id(callNode.path("id").asText())
-                        .type(callNode.path("type").asText("function"))
+                        .id(text(callNode, "id", "call_" + toolCalls.size()))
+                        .type(text(callNode, "type", "function"))
                         .function(function)
+                        .build());
+            }
+        }
+
+        // Compatibility with the legacy single function_call response shape.
+        if (toolCalls.isEmpty() && message.path("function_call").isObject()) {
+            JsonNode functionNode = message.path("function_call");
+            String name = text(functionNode, "name", "");
+            if (!name.isBlank()) {
+                toolCalls.add(ToolCall.builder()
+                        .id("call_legacy")
+                        .type("function")
+                        .function(ToolCall.FunctionCall.builder()
+                                .name(name)
+                                .arguments(text(functionNode, "arguments", "{}"))
+                                .build())
                         .build());
             }
         }
@@ -165,5 +194,13 @@ public class ZhipuChatModel implements ChatModel {
                 .promptTokens(promptTokens)
                 .completionTokens(completionTokens)
                 .build();
+    }
+
+    private String text(JsonNode node, String field, String defaultValue) {
+        if (node == null || !node.isObject()) {
+            return defaultValue;
+        }
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? defaultValue : value.asText(defaultValue);
     }
 }

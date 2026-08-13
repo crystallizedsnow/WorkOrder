@@ -1,6 +1,8 @@
 package com.aiassistant.controller;
 
-import com.aiassistant.agent.AgentLoop;
+import com.aiassistant.channel.AgentGateway;
+import com.aiassistant.channel.model.AgentRequest;
+import com.aiassistant.channel.model.ChannelType;
 import com.aiassistant.common.ChatForm;
 import com.aiassistant.util.LogUtils;
 import org.slf4j.MDC;
@@ -13,13 +15,15 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/assistant")
 public class AIChatController {
 
     @Autowired
-    private AgentLoop agentLoop;
+    private AgentGateway agentGateway;
 
     @GetMapping("/")
     public String healthCheck() {
@@ -31,6 +35,9 @@ public class AIChatController {
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamChat(@RequestBody ChatForm chatForm, @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ") || authHeader.length() == 7) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authorization must use Bearer scheme");
+        }
         String traceId = MDC.get("traceId");
         Map<String, Object> params = new HashMap<>();
         params.put("memoryId", chatForm.getMemoryId());
@@ -38,7 +45,8 @@ public class AIChatController {
         params.put("authHeader", authHeader != null ? "***" : null);
         LogUtils.entrance(traceId, "/assistant/chat", "POST", params);
         
-        return agentLoop.run(chatForm.getMemoryId(), chatForm.getMessage(), authHeader)
+        return agentGateway.execute(new AgentRequest(chatForm.getMemoryId(), null, chatForm.getMessage(),
+                        authHeader.substring(7), ChannelType.WEB, null, null, null, traceId))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnComplete(() -> LogUtils.returnLog(traceId, "/assistant/chat", "POST", "completed"))
                 .doOnError(e -> LogUtils.error(traceId, "/assistant/chat", params, e));

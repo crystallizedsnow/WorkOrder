@@ -11,7 +11,6 @@ com\example\workorder\cli\config\FeignConfig.class
 com\example\workorder\cli\dto\response\DataCodeDTO.class
 com\example\workorder\cli\service\WriteService.class
 com\example\workorder\cli\config\WebConfig.class
-com\example\workorder\cli\util\JwtUtil.class
 com\example\workorder\cli\dto\response\ApiResponse.class
 com\example\workorder\cli\feign\FlowFeignClient.class
 com\example\workorder\cli\feign\WorkOrderFeignClient.class

@@ -24,6 +24,8 @@ func handleAuthCommand(args []string) {
 		handleAuthLogin(args)
 	case "logout":
 		handleAuthLogout(args)
+	case "refresh":
+		handleAuthRefresh(args)
 	case "status":
 		handleAuthStatus(args)
 	default:
@@ -34,22 +36,9 @@ func handleAuthCommand(args []string) {
 func handleAuthLogin(args []string) {
 	phone := getArgValue(args, "--phone")
 	password := getArgValue(args, "--password")
-	fromAccountFile := false
-
-	// 未显式传入凭证时，自动从本地 account 文件读取，实现无参数重登
 	if phone == "" || password == "" {
-		account, err := auth.LoadAccount()
-		if err != nil {
-			output.PrintError(1, fmt.Sprintf("读取账号文件失败: %v", err))
-			return
-		}
-		if account == nil {
-			output.PrintError(4, "手机号和密码不能为空，且本地未找到账号文件。请使用 --phone 和 --password 参数登录")
-			return
-		}
-		phone = account.Phone
-		password = account.Password
-		fromAccountFile = true
+		output.PrintError(4, "手机号和密码不能为空，请使用 --phone 和 --password 参数交互登录")
+		return
 	}
 
 	client := api.NewClient()
@@ -66,31 +55,45 @@ func handleAuthLogin(args []string) {
 		return
 	}
 
-	if err := auth.SaveToken(resp.Data, phone); err != nil {
+	if err := auth.SaveToken(resp.Data.AccessToken, resp.Data.RefreshToken, phone, resp.Data.AccessTokenExpiresAt); err != nil {
 		output.PrintError(1, fmt.Sprintf("保存Token失败: %v", err))
 		return
 	}
 
-	// 登录成功后保存账号凭证，后续 Token 过期可无参数自动重登
-	if !fromAccountFile {
-		if err := auth.SaveAccount(phone, password); err != nil {
-			output.PrintError(1, fmt.Sprintf("保存账号文件失败: %v", err))
-			return
-		}
-	}
-
 	output.PrintSuccess(map[string]interface{}{
-		"phone": phone,
-		"token": resp.Data,
+		"phone":     phone,
+		"tokenType": resp.Data.TokenType,
+		"expiresAt": resp.Data.AccessTokenExpiresAt,
 	})
 }
 
 func handleAuthLogout(args []string) {
+	if info, _ := auth.GetTokenInfo(); info != nil && info.Token != "" {
+		_ = api.NewClient().Logout(context.Background(), info.Token)
+	}
 	if err := auth.DeleteToken(); err != nil {
 		output.PrintError(1, fmt.Sprintf("登出失败: %v", err))
 		return
 	}
 	output.PrintSuccess(map[string]interface{}{"message": "登出成功"})
+}
+
+func handleAuthRefresh(args []string) {
+	info, err := auth.GetTokenInfo()
+	if err != nil || info == nil || info.RefreshToken == "" {
+		output.PrintError(2, "没有可用的刷新凭证，请重新登录")
+		return
+	}
+	resp, err := api.NewClient().Refresh(context.Background(), info.RefreshToken)
+	if err != nil || resp.Code != 1 {
+		output.PrintError(2, "刷新失败，请重新登录")
+		return
+	}
+	if err := auth.SaveToken(resp.Data.AccessToken, resp.Data.RefreshToken, info.Phone, resp.Data.AccessTokenExpiresAt); err != nil {
+		output.PrintError(1, fmt.Sprintf("保存刷新结果失败: %v", err))
+		return
+	}
+	output.PrintSuccess(map[string]interface{}{"tokenType": resp.Data.TokenType, "expiresAt": resp.Data.AccessTokenExpiresAt})
 }
 
 func handleAuthStatus(args []string) {
@@ -113,7 +116,6 @@ func handleAuthStatus(args []string) {
 	output.PrintSuccess(map[string]interface{}{
 		"loggedIn":   !isExpired,
 		"phone":      tokenInfo.Phone,
-		"token":      tokenInfo.Token,
 		"createTime": tokenInfo.CreateTime.Format("2006-01-02 15:04:05"),
 		"expireTime": tokenInfo.ExpireTime.Format("2006-01-02 15:04:05"),
 		"isExpired":  isExpired,

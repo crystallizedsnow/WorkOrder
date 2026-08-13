@@ -10,6 +10,9 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import com.example.spring_vue_demo.service.AuthTokenService;
 
 @Configuration
 @EnableWebSecurity
@@ -17,18 +20,20 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, AuthTokenService authTokenService) throws Exception {
         http
                 .csrf(csrf -> csrf.disable()) // ✅ 新写法
                 .authorizeHttpRequests(auth -> auth
          //               .anyRequest().permitAll()
-                        .requestMatchers("/user/login","/doc.html", "/webjars/**", "/v3/api-docs/**", "/swagger-resources/**",
-                                "/api/v1/sse", "/api/v1/sse/**", "/api/v1/mcp", "/api/v1/mcp/**", "/api/auth/**").permitAll()
+                        .requestMatchers("/user/login", "/api/auth/refresh", "/api/channel/identity/internal/**", "/doc.html", "/webjars/**", "/v3/api-docs/**", "/swagger-resources/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .addFilterBefore(new JwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtAuthenticationFilter(authTokenService), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
 }

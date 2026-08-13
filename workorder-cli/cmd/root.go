@@ -59,6 +59,9 @@ var rootCmd = &cobra.Command{
 		case "auth":
 			handleAuthCommand(args[cmdIndex:])
 			return
+		case "channel":
+			handleChannelCommand(args[cmdIndex:])
+			return
 		case "api":
 			handleApiCommand(args[cmdIndex:])
 			return

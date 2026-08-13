@@ -26,14 +26,13 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         String authHeader = request.getHeader(AUTHORIZATION_HEADER);
-        log.info("AuthInterceptor.preHandle called, path: {}, authHeader length: {}", 
-                request.getRequestURI(), authHeader != null ? authHeader.length() : 0);
+        log.info("Authenticating request path: {}", request.getRequestURI());
 
-        if (!StringUtils.hasText(authHeader)) {
+        if (!StringUtils.hasText(authHeader) || !authHeader.startsWith("Bearer ")) {
             log.warn("Missing Authorization header");
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write("{\"code\":401,\"message\":\"Missing Authorization header\",\"data\":null}");
+            response.getWriter().write("{\"code\":401,\"message\":\"Authorization must use Bearer scheme\",\"data\":null}");
             return false;
         }
 
@@ -43,7 +42,7 @@ public class AuthInterceptor implements HandlerInterceptor {
                     result.isValid(), result.getUserId(), result.getRole(), result.getMessage());
             
             if (!result.isValid()) {
-                log.warn("Invalid token: {}", authHeader.length() > 20 ? authHeader.substring(0, 20) + "..." : authHeader);
+                log.warn("Invalid access token");
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write("{\"code\":401,\"message\":\"" + result.getMessage() + "\",\"data\":null}");

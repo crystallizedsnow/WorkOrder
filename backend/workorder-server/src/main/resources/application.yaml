@@ -12,6 +12,20 @@ mybatis-plus:
 server:
     port: 8080
 
+workorder:
+    auth:
+        # 仅用于本地开发。部署到共享或生产环境前应改用密钥管理或环境变量注入。
+        jwt-secret: local-dev-workorder-jwt-secret-2026-change-before-production
+        issuer: workorder-backend
+        audience: workorder-api
+        access-ttl: 15m
+        refresh-ttl: 30d
+        binding-code-ttl: 5m
+        channel-access-ttl: 5m
+        binding-max-attempts: 5
+        # 仅用于本地开发，必须与 AiAssistant 的配置一致。
+        channel-service-key: local-dev-aiassistant-channel-service-key-2026
+
 spring:
     datasource:
         driver-class-name: com.mysql.cj.jdbc.Driver

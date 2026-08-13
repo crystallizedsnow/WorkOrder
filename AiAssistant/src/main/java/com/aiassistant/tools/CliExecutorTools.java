@@ -2,6 +2,7 @@ package com.aiassistant.tools;
 
 import com.aiassistant.tool.annotation.P;
 import com.aiassistant.tool.annotation.Tool;
+import com.aiassistant.common.SessionContext;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -36,7 +37,13 @@ public class CliExecutorTools {
     public String executeCliCommand(@P("CLI命令字符串") String command) throws IOException {
         String traceId = java.util.UUID.randomUUID().toString();
 
-        log.info("executeCliCommand - 命令: {}", command);
+        List<String> requestedArgs = tokenizeCommand(command == null ? "" : command);
+        if (containsCredentialOperation(requestedArgs)) {
+            log.warn("拒绝 Agent 发起登录或携带凭证的 CLI 命令");
+            return "{\"code\": 4, \"message\": \"禁止Agent执行登录、刷新凭证或在命令中传递密码/Token；请使用当前请求的Bearer Access Token\", \"data\": null, \"traceId\": \"" + traceId + "\"}";
+        }
+
+        log.info("executeCliCommand - 命令: {}", redactCommand(requestedArgs));
 
         try {
             List<String> cmdArgs = buildCommandArgs(command);
@@ -68,6 +75,11 @@ public class CliExecutorTools {
     private CommandResult runCommand(List<String> cmdArgs, String traceId) throws IOException, InterruptedException, java.util.concurrent.ExecutionException {
         ProcessBuilder processBuilder = new ProcessBuilder(cmdArgs);
         processBuilder.environment().put("WORKORDER_TRACE_ID", traceId);
+        String requestToken = SessionContext.getStaticToken();
+        if (requestToken == null || requestToken.isBlank()) {
+            throw new IllegalStateException("当前请求没有用户访问凭证");
+        }
+        processBuilder.environment().put("WORKORDER_TOKEN", requestToken);
         processBuilder.redirectErrorStream(true);
         Process process = processBuilder.start();
 
@@ -198,6 +210,31 @@ public class CliExecutorTools {
         }
 
         return tokens;
+    }
+
+    private boolean containsCredentialOperation(List<String> args) {
+        for (int i = 1; i < args.size(); i++) {
+            String arg = args.get(i).toLowerCase(java.util.Locale.ROOT);
+            if ("login".equals(arg) || "--password".equals(arg) || "--token".equals(arg) || "-t".equals(arg)) {
+                return true;
+            }
+            if ("auth".equals(arg) && i + 1 < args.size()
+                    && ("login".equalsIgnoreCase(args.get(i + 1)) || "refresh".equalsIgnoreCase(args.get(i + 1)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String redactCommand(List<String> args) {
+        List<String> safe = new ArrayList<>(args);
+        for (int i = 0; i < safe.size(); i++) {
+            String arg = safe.get(i).toLowerCase(java.util.Locale.ROOT);
+            if (("--password".equals(arg) || "--token".equals(arg) || "-t".equals(arg)) && i + 1 < safe.size()) {
+                safe.set(i + 1, "***");
+            }
+        }
+        return String.join(" ", safe);
     }
 
     private String wrapErrorResult(int exitCode, String message) {

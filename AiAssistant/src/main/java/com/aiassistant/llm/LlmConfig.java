@@ -28,9 +28,11 @@ public class LlmConfig {
     public static class Chat {
         /** 完整聊天接口地址，例如 https://open.bigmodel.cn/api/paas/v4/chat/completions */
         private String url;
-        private String model = "glm-4.6v";
+        private String model = "glm-4.5-air";
         private double temperature = 0.7;
         private int maxTokens = 4096;
+        /** GLM 深度思考模式：enabled 或 disabled。 */
+        private String thinkingType = "enabled";
         /** 单次请求超时（毫秒） */
         private int timeoutMs = 60000;
     }

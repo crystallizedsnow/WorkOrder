@@ -1,45 +1,45 @@
 package com.example.spring_vue_demo.service.impl;
 
-import cn.hutool.core.lang.UUID;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.example.spring_vue_demo.entity.Result;
 import com.example.spring_vue_demo.entity.Staff;
-import com.example.spring_vue_demo.entity.WorkOrder;
 import com.example.spring_vue_demo.mapper.StaffMapper;
-import com.example.spring_vue_demo.mapper.WorkOrderMapper;
 import com.example.spring_vue_demo.param.LoginParam;
+import com.example.spring_vue_demo.service.AuthTokenService;
 import com.example.spring_vue_demo.service.LoginService;
-import com.example.spring_vue_demo.utils.TokenUtil;
-import lombok.extern.slf4j.Slf4j;
-import lombok.val;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Slf4j
+@RequiredArgsConstructor
 public class LoginServiceImpl extends ServiceImpl<StaffMapper, Staff> implements LoginService {
-    @Autowired
-    private StaffMapper staffMapper;
+    private final StaffMapper staffMapper;
+    private final PasswordEncoder passwordEncoder;
+    private final AuthTokenService authTokenService;
+
     @Override
+    @Transactional
     public Result login(LoginParam loginParam) {
-        //校验密码
-        Staff staff = staffMapper.selectOne(
-                new LambdaQueryWrapper<Staff>()
-                        .eq(Staff::getPhone, loginParam.getPhone())
-        );
-        if(staff == null){
-            return Result.error("用户不存在");
-        }
-        log.info(staff.toString());
-        if(!staff.getPassword().equals(loginParam.getPassword())) {
+        Staff staff = staffMapper.selectOne(new LambdaQueryWrapper<Staff>().eq(Staff::getPhone, loginParam.getPhone()));
+        if (staff == null || staff.getStatus() == null || staff.getStatus() != 0 || !matches(loginParam.getPassword(), staff.getPassword())) {
             return Result.error("账号或者密码错误");
         }
-        //生成token
-        String token = TokenUtil.generateToken(staff);
+        if (!isHash(staff.getPassword())) {
+            staff.setPassword(passwordEncoder.encode(loginParam.getPassword()));
+            if (staff.getAuthVersion() == null) staff.setAuthVersion(0);
+            staffMapper.updateById(staff);
+        }
+        return Result.success(authTokenService.issue(staff));
+    }
 
-        //返回token
-        return Result.success(token);
+    private boolean matches(String raw, String encoded) {
+        return raw != null && encoded != null && (isHash(encoded) ? passwordEncoder.matches(raw, encoded) : constantTimeEquals(raw, encoded));
+    }
+    private boolean isHash(String value) { return value.startsWith("$2a$") || value.startsWith("$2b$") || value.startsWith("$2y$"); }
+    private boolean constantTimeEquals(String left, String right) {
+        return java.security.MessageDigest.isEqual(left.getBytes(java.nio.charset.StandardCharsets.UTF_8), right.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

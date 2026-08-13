@@ -1,6 +1,7 @@
 package com.aiassistant.recovery;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Random;
@@ -10,20 +11,23 @@ import java.util.concurrent.Callable;
 @Slf4j
 public class RetryService {
 
-    private static final int MAX_RETRIES = 3;
     private static final long INITIAL_DELAY_MS = 1000;
     private static final double JITTER_FACTOR = 0.1;
 
     private final Random random = new Random();
 
+    @Value("${workorder.agent.command-max-retries:2}")
+    private int commandMaxRetries;
+
     public <T> T executeWithRetry(Callable<T> task, String taskName) throws Exception {
-        return executeWithRetry(task, taskName, MAX_RETRIES);
+        return executeWithRetry(task, taskName, commandMaxRetries);
     }
 
     public <T> T executeWithRetry(Callable<T> task, String taskName, int maxRetries) throws Exception {
         Exception lastException = null;
 
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        // maxRetries 表示首次执行失败后的重试次数，因此总尝试次数为 1 + maxRetries。
+        for (int attempt = 1; attempt <= maxRetries + 1; attempt++) {
             try {
                 return task.call();
             } catch (Exception e) {
@@ -35,7 +39,7 @@ public class RetryService {
                     throw e;
                 }
 
-                if (attempt < maxRetries) {
+                if (attempt <= maxRetries) {
                     long delay = calculateDelay(attempt);
                     log.info("任务 {} 第 {} 次尝试失败，{}ms后重试: {}", 
                             taskName, attempt, delay, e.getMessage());

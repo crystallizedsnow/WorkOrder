@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 /**
  *
@@ -28,15 +29,15 @@ public class LoginController {
     @ApiOperationSupport(order = 1)
     @Operation(summary = "登录")
     @PostMapping("/login")
-    public Result login(@RequestBody LoginParam loginParam) {
+    public Result login(@Valid @RequestBody LoginParam loginParam) {
         String traceId = MDC.get("traceId");
-        LogUtils.entrance(traceId, "/user/login", "POST", loginParam);
+        LogUtils.entrance(traceId, "/user/login", "POST", java.util.Map.of("phoneProvided", loginParam.getPhone() != null));
         try {
             Result result = loginService.login(loginParam);
-            LogUtils.returnLog(traceId, "/user/login", "POST", result);
+            LogUtils.returnLog(traceId, "/user/login", "POST", java.util.Map.of("success", result.getCode() == 1));
             return result;
         } catch (Exception e) {
-            LogUtils.error(traceId, "/user/login", loginParam, e);
+            LogUtils.error(traceId, "/user/login", "credentials-redacted", e);
             throw e;
         }
     }

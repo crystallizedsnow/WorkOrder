@@ -16,10 +16,8 @@ public class AuthService {
 
     public ValidateTokenResult validateToken(String token) {
         try {
-            log.info("Calling authFeignClient.validateToken, token length: {}", token != null ? token.length() : 0);
             ResponseEntity<ValidateTokenResult> response = authFeignClient.validateToken(token);
-            log.info("AuthFeignClient response status: {}, body: {}", 
-                    response.getStatusCode(), response.getBody());
+            log.info("AuthFeignClient response status: {}", response.getStatusCode());
             if (response.getBody() != null) {
                 log.info("Token validation result: valid={}, userId={}, role={}, message={}", 
                         response.getBody().isValid(), 

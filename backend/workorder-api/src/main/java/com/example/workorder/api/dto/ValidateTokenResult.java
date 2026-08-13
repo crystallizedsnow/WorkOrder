@@ -11,5 +11,11 @@ public class ValidateTokenResult {
     private boolean valid;
     private String userId;
     private String role;
+    private String sessionId;
+    private Long expiresAtEpochSecond;
     private String message;
+
+    public ValidateTokenResult(boolean valid, String userId, String role, String message) {
+        this(valid, userId, role, null, null, message);
+    }
 }

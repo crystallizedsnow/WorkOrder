@@ -55,6 +55,7 @@ Thumbs.db
 
 # Configuration files with personal information
 AiAssistant/src/main/resources/application.yaml
+AiAssistant/src/main/resources/application-local.yaml
 backend/workorder-server/src/main/resources/application.yaml
 cli-service/src/main/resources/application.yaml
 

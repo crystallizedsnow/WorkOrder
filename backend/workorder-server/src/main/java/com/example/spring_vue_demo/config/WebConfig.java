@@ -1,6 +1,5 @@
 package com.example.spring_vue_demo.config;
 
-import com.example.spring_vue_demo.Interceptor.LoginInterceptor;
 import com.example.spring_vue_demo.Interceptor.TraceIdInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
@@ -22,12 +21,6 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(traceIdInterceptor)
                 .addPathPatterns("/**");
-        registry.addInterceptor(new LoginInterceptor())
-                .addPathPatterns("/**")
-                .excludePathPatterns("/user/login")
-                .excludePathPatterns("/swagger-resources/**", "/webjars/**", "/v3/**", "/doc.html/**")
-                .excludePathPatterns("/api/v1/sse","/api/v1/sse/**","/api/v1/mcp","/api/v1/mcp/**")
-                .excludePathPatterns("/api/auth/**");
     }
 
     @Override

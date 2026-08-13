@@ -38,7 +38,7 @@ public class FallbackService {
         switch (errorType) {
             case USER_ACTIONABLE:
                 if (errorMessage.contains("401") || errorMessage.contains("token")) {
-                    return "您的登录已过期，请重新登录。使用格式: login('用户名', '密码')";
+                    return "当前会话凭证无效或已过期，请在客户端重新认证后发起新请求。不要在对话中发送账号、密码或Token。";
                 }
                 if (errorMessage.contains("403") || errorMessage.contains("permission")) {
                     return "您的权限不足，无法执行此操作。请联系管理员。";

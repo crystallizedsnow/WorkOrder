@@ -5,7 +5,6 @@ import com.aiassistant.tool.annotation.P;
 import com.aiassistant.tool.annotation.Tool;
 import com.aiassistant.tools.CliExecutorTools;
 import com.aiassistant.tools.FileTools;
-import com.aiassistant.tools.SsoCliTools;
 import com.aiassistant.todo.TodoWriteTools;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,16 +47,12 @@ public class ToolDispatcher {
     private FileTools fileTools;
 
     @Autowired
-    private SsoCliTools ssoCliTools;
-
-    @Autowired
     private TodoWriteTools todoWriteTools;
 
     @PostConstruct
     public void initialize() {
         registerTools(cliExecutorTools);
         registerTools(fileTools);
-        registerTools(ssoCliTools);
         registerTools(todoWriteTools);
         log.info("已注册 {} 个工具", toolHandlers.size());
     }

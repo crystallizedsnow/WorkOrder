@@ -19,6 +19,9 @@ import com.aiassistant.recovery.FallbackService;
 import com.aiassistant.recovery.RetryService;
 import com.aiassistant.service.LongTermMemoryService;
 import com.aiassistant.todo.TodoManager;
+import com.aiassistant.channel.model.AgentRequest;
+import com.aiassistant.channel.model.ChannelType;
+import com.aiassistant.channel.confirmation.WriteConfirmationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -49,6 +52,9 @@ public class AgentLoop {
 
     @Value("${workorder.memory.enabled:false}")
     private boolean longTermMemoryEnabled;
+
+    @Value("${workorder.agent.max-rounds:10}")
+    private int maxRounds;
 
     @Autowired
     private ChatModel chatModel;
@@ -85,16 +91,23 @@ public class AgentLoop {
 
     @Autowired
     private TodoManager todoManager;
+    @Autowired private WriteConfirmationService confirmations;
+    @Autowired private com.aiassistant.channel.ConfirmationNotifier confirmationNotifier;
 
-    private static final int MAX_ROUNDS = 20;
     private static final int NAG_REMINDER_ROUNDS = 3;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public Flux<String> run(Long sessionId, String query, String token) {
+        return run(new AgentRequest(sessionId, null, query, token, ChannelType.WEB, null, null, null, null));
+    }
+
+    public Flux<String> run(AgentRequest request) {
         return Flux.create(sink -> {
+            Long sessionId = request.sessionId(); String query = request.query(); String token = request.accessToken();
             try {
                 sessionContext.setSession(sessionId, token);
+                sessionContext.setRequest(request);
                 hookRegistry.executeHooks(HookType.SESSION_START,
                         HookContext.builder().sessionId(sessionId).build());
 
@@ -131,6 +144,10 @@ public class AgentLoop {
         }
         messages.add(ChatMessage.user(initialQuery));
 
+        if (isConfirmationMessage(initialQuery) && findLatestDryRunCommand(messages) == null) {
+            return "当前会话没有已完成且等待确认的 dry-run 预演，不能执行真实写操作。请先重新提交写操作请求并检查预演结果。";
+        }
+
         List<ToolDefinition> tools = toolDispatcher.getToolDefinitions();
 
         StringBuilder conversationHistory = new StringBuilder();
@@ -140,7 +157,7 @@ public class AgentLoop {
         boolean hasActiveTodos = todoManager.hasActiveTodos(sessionId);
         boolean longTask = isLongTask(initialQuery) || hasActiveTodos;
 
-        for (int round = 0; round < MAX_ROUNDS; round++) {
+        for (int round = 0; round < maxRounds; round++) {
             log.info("ReAct循环第 {} 轮", round + 1);
 
             List<ChatMessage> messagesToSend = new ArrayList<>(messages);
@@ -168,6 +185,11 @@ public class AgentLoop {
                             .build());
 
             if (response.hasToolCalls()) {
+                if (response.getToolCalls().stream().anyMatch(this::isForbiddenCredentialToolCall)) {
+                    log.warn("模型生成了禁止的凭证操作，已在 AgentLoop 层丢弃 - sessionId: {}", sessionId);
+                    messages.add(ChatMessage.user("[系统安全约束] 当前请求身份已经建立。不得执行任何登录、刷新凭证、读取凭证文件或在命令中传递凭证的操作。请从 DISCOVER 开始，直接使用业务 CLI 命令。"));
+                    continue;
+                }
                 boolean containsBusinessTool = response.getToolCalls().stream()
                         .anyMatch(tc -> !isTodoTool(tc.getFunction().getName()));
                 boolean containsTodoWrite = response.getToolCalls().stream()
@@ -215,6 +237,20 @@ public class AgentLoop {
 
                     String toolResult = executeToolWithRecovery(toolName, arguments);
 
+                    AgentRequest currentRequest = sessionContext.getRequest();
+                    if (currentRequest != null && currentRequest.channel() == ChannelType.FEISHU && "executeCliCommand".equals(toolName)) {
+                        String command = extractCliCommand(arguments);
+                        if (command != null && command.contains("--dry-run") && !isErrorResponse(toolResult)) {
+                            var pending = confirmations.create(sessionId, currentRequest.userId(), currentRequest.tenantId(),
+                                    currentRequest.sourceConversationId(), currentRequest.senderId(), command, toolResult, currentRequest.traceId());
+                            confirmationNotifier.notify(pending);
+                            // 飞书确认卡片已经接管后续流程。立即结束本轮 Agent，避免模型继续生成
+                            // confirm_execute 文本，或在按钮回调并发执行时再次尝试真实写命令。
+                            chatMemoryStore.updateMessages(sessionId, messages);
+                            return "";
+                        }
+                    }
+
                     hookRegistry.executeHooks(HookType.POST_TOOL_USE,
                             HookContext.builder()
                                     .sessionId(sessionId)
@@ -258,6 +294,27 @@ public class AgentLoop {
                 || toolName.equals("todoList")
                 || toolName.equals("todoUpdate")
                 || toolName.equals("todoClear"));
+    }
+
+    private boolean isForbiddenCredentialToolCall(ToolCall call) {
+        if (call == null || call.getFunction() == null) {
+            return false;
+        }
+        String name = call.getFunction().getName();
+        String arguments = call.getFunction().getArguments();
+        if (name != null && name.toLowerCase(Locale.ROOT).contains("login")) {
+            return true;
+        }
+        if (!"executeCliCommand".equals(name) || arguments == null) {
+            return false;
+        }
+        String command = extractCliCommand(arguments);
+        if (command == null) {
+            return false;
+        }
+        String normalized = " " + command.toLowerCase(Locale.ROOT) + " ";
+        return normalized.matches("(?s).*\\s(?:auth\\s+)?(?:login|refresh)\\s.*")
+                || normalized.matches("(?s).*\\s(?:--password|--token|-t)\\s+.*");
     }
 
     /**
@@ -358,6 +415,31 @@ public class AgentLoop {
         }
     }
 
+    private boolean isConfirmationMessage(String message) {
+        try {
+            JsonNode node = MAPPER.readTree(message);
+            return "confirm_execute".equals(node.path("action").asText());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean containsCredentialContent(ChatMessage message) {
+        if (message == null) {
+            return false;
+        }
+        String content = message.getContent();
+        if (content != null) {
+            String normalized = content.toLowerCase(Locale.ROOT);
+            if (normalized.contains("--password") || normalized.contains("auth login")
+                    || normalized.contains("账号密码") || normalized.contains("手机号和密码")
+                    || normalized.contains("\"password\"") || normalized.contains("login('")) {
+                return true;
+            }
+        }
+        return message.getToolCalls() != null && message.getToolCalls().stream().anyMatch(this::isForbiddenCredentialToolCall);
+    }
+
     private List<ChatMessage> loadSessionHistory(Long sessionId) {
         try {
             List<ChatMessage> history = chatMemoryStore.getMessages(sessionId);
@@ -365,9 +447,22 @@ public class AgentLoop {
                 return List.of();
             }
 
+            java.util.Set<String> forbiddenCallIds = new java.util.HashSet<>();
+            for (ChatMessage message : history) {
+                if (message != null && message.getToolCalls() != null) {
+                    message.getToolCalls().stream().filter(this::isForbiddenCredentialToolCall)
+                            .map(ToolCall::getId).filter(java.util.Objects::nonNull).forEach(forbiddenCallIds::add);
+                }
+            }
             List<ChatMessage> filtered = new ArrayList<>();
             for (ChatMessage message : history) {
                 if (message == null || "system".equals(message.getRole())) {
+                    continue;
+                }
+                if (containsCredentialContent(message)) {
+                    continue;
+                }
+                if ("tool".equals(message.getRole()) && forbiddenCallIds.contains(message.getToolCallId())) {
                     continue;
                 }
                 filtered.add(message);

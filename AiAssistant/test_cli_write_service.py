@@ -4,13 +4,64 @@ import time
 import sys
 import os
 
+# Windows 控制台默认代码页可能不是 UTF-8；确保测试标题、请求和 Agent 响应一致显示中文。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 BASE_URL = "http://localhost:8081/assistant"
 BACKEND_URL = "http://localhost:8080"
+AUTH_TOKEN = None
+
+
+def login():
+    """使用新认证契约获取短期 Access Token，不再读取旧 .auth_token 或复用密码文件。"""
+    global AUTH_TOKEN
+    supplied = os.getenv("WORKORDER_TEST_ACCESS_TOKEN", "").strip()
+    if supplied:
+        AUTH_TOKEN = supplied[7:] if supplied.startswith("Bearer ") else supplied
+        return True
+
+    phone = "13812345678"
+    password = "newPassword123!"
+    if not phone or not password:
+        print("缺少测试凭证：请设置 WORKORDER_TEST_ACCESS_TOKEN，或设置 WORKORDER_TEST_PHONE 和 WORKORDER_TEST_PASSWORD")
+        return False
+    try:
+        response = requests.post(f"{BACKEND_URL}/user/login",
+                                 json={"phone": phone, "password": password}, timeout=15)
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get("data") or {}
+        if payload.get("code") != 1 or not data.get("accessToken"):
+            print(f"登录失败: {payload.get('msg') or payload.get('message') or '未返回 accessToken'}")
+            return False
+        AUTH_TOKEN = data["accessToken"]
+        print(f"登录成功，Access Token 到期时间: {data.get('accessTokenExpiresAt', '未知')}")
+        return True
+    except (requests.RequestException, ValueError) as exc:
+        print(f"登录请求失败: {exc}")
+        return False
+
+
+def decode_sse(response):
+    """只提取 SSE data 字段，避免把协议字段或框架对象当作 Agent 正文。"""
+    events = []
+    # requests 对 text/event-stream 没有可靠的默认 charset，可能按 ISO-8859-1
+    # 解码 UTF-8 中文并产生 mojibake。始终按协议实际编码 UTF-8 解码原始字节。
+    for raw_line in response.iter_lines(decode_unicode=False):
+        line = raw_line.decode("utf-8", errors="replace") if raw_line else ""
+        if line.startswith("data:"):
+            events.append(line[5:].lstrip())
+    return "".join(events)
 
 
 def call_agent(session_id, message, description=None):
     url = f"{BASE_URL}/chat"
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    if AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {AUTH_TOKEN}"
     payload = {"memoryId": session_id, "message": message}
 
     if description:
@@ -29,15 +80,7 @@ def call_agent(session_id, message, description=None):
         response = requests.post(url, headers=headers, json=payload, stream=True, timeout=180)
         response.raise_for_status()
 
-        buffer = bytearray()
-        for chunk in response.iter_content(chunk_size=1024):
-            if chunk:
-                buffer.extend(chunk)
-
-        try:
-            result = buffer.decode('utf-8')
-        except UnicodeDecodeError:
-            result = buffer.decode('utf-8', errors='replace')
+        result = decode_sse(response)
 
         elapsed_time = time.time() - start_time
 
@@ -629,6 +672,10 @@ def main():
     print("\n" + "="*70)
     print("开始执行测试场景")
     print("="*70)
+
+    if not login():
+        print("鉴权准备失败，终止测试；不会把 401 响应误判为 Agent 结果。")
+        sys.exit(2)
 
     # 执行统计
     results = {}

@@ -1,81 +1,67 @@
 package com.example.spring_vue_demo.utils;
 
+import com.example.spring_vue_demo.config.AuthProperties;
 import com.example.spring_vue_demo.entity.Staff;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Date;
 
-/**
- * @author WangDayu
- * @date 2025/6/2
- */
+@Component
 public class TokenUtil {
+    private final AuthProperties properties;
+    private final SecretKey key;
 
-    // 建议至少 256-bit（32 字节）长度密钥
-    private static final String SECRET = "MySuperSecretKeyForJWT1234567890!"; // >= 32 字符
-    private static final SecretKey KEY = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+    public TokenUtil(AuthProperties properties) {
+        this.properties = properties;
+        if (properties.getJwtSecret() == null || properties.getJwtSecret().getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("WORKORDER_JWT_SECRET must contain at least 32 UTF-8 bytes");
+        }
+        this.key = Keys.hmacShaKeyFor(properties.getJwtSecret().getBytes(StandardCharsets.UTF_8));
+    }
 
-    /**
-     * 生成 JWT Token
-     */
-    public static String generateToken(Staff staff) {
+    public String generateAccessToken(Staff staff, String sessionId, Instant expiresAt) {
+        int authVersion = staff.getAuthVersion() == null ? 0 : staff.getAuthVersion();
+        Instant now = Instant.now();
         return Jwts.builder()
-                .setSubject(staff.getName())
-                .claim("id", staff.getId())
-                .claim("name", staff.getName())
-                .claim("company", staff.getCompany())
-                .claim("department", staff.getDepartment())
-                .claim("position", staff.getPosition())
-                .claim("status", staff.getStatus())
-                .claim("phone", staff.getPhone())
-                .claim("email", staff.getEmail())
-                .claim("role", staff.getRole())
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 86400000)) // 1天有效期
-                .signWith(KEY, SignatureAlgorithm.HS256)
+                .setSubject(String.valueOf(staff.getId()))
+                .setId(java.util.UUID.randomUUID().toString())
+                .setIssuer(properties.getIssuer())
+                .setAudience(properties.getAudience())
+                .claim("sid", sessionId)
+                .claim("ver", authVersion)
+                .setIssuedAt(Date.from(now))
+                .setExpiration(Date.from(expiresAt))
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    /**
-     * 验证 Token 是否有效
-     */
-    public static boolean verifyToken(String token) {
-        try {
-            Jwts.parserBuilder()
-                    .setSigningKey(KEY)
-                    .build()
-                    .parseClaimsJws(token);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+    public String generateChannelAccessToken(Staff staff, Long bindingId, int bindingVersion,
+                                             String channelSessionId, Instant expiresAt) {
+        int authVersion = staff.getAuthVersion() == null ? 0 : staff.getAuthVersion();
+        Instant now = Instant.now();
+        return Jwts.builder().setSubject(String.valueOf(staff.getId())).setId(java.util.UUID.randomUUID().toString())
+                .setIssuer(properties.getIssuer()).setAudience(properties.getAudience())
+                .claim("typ", "channel_proxy").claim("src", "feishu")
+                .claim("bid", bindingId).claim("bver", bindingVersion)
+                .claim("csid", channelSessionId).claim("ver", authVersion)
+                .setIssuedAt(Date.from(now)).setExpiration(Date.from(expiresAt))
+                .signWith(key, SignatureAlgorithm.HS256).compact();
     }
 
-    /**
-     * 从 Token 中解析出 Staff 信息
-     */
-    public static Staff parsestaffFromToken(String token) {
-        Claims claims = Jwts.parserBuilder()
-                .setSigningKey(KEY)
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
+    public Jws<Claims> parseAccessToken(String token) {
+        return Jwts.parserBuilder().setSigningKey(key).requireIssuer(properties.getIssuer())
+                .requireAudience(properties.getAudience()).build().parseClaimsJws(token);
+    }
 
-        Staff staff = new Staff();
-        staff.setId(Long.valueOf(claims.get("id").toString()));
-        staff.setName(claims.getSubject());
-        staff.setCompany(claims.get("company").toString());
-        staff.setDepartment(claims.get("department").toString());
-        staff.setPosition(claims.get("position").toString());
-        staff.setStatus((Integer) claims.get("status"));
-        staff.setEmail(claims.get("email").toString());
-        staff.setPhone(claims.get("phone").toString());
-        staff.setRole(claims.get("role").toString());
-        return staff;
+    public boolean verifyToken(String token) {
+        try { parseAccessToken(token); return true; } catch (RuntimeException ex) { return false; }
     }
 }

@@ -7,28 +7,28 @@ public class SessionContext {
 
     private static final ThreadLocal<Long> currentMemoryId = new ThreadLocal<>();
     private static final ThreadLocal<String> currentToken = new ThreadLocal<>();
+    private static final ThreadLocal<com.aiassistant.channel.model.AgentRequest> currentRequest = new ThreadLocal<>();
     
-    private static volatile String cachedToken = null;
-
     public void setSession(Long memoryId, String token) {
         currentMemoryId.set(memoryId);
         currentToken.set(token);
-        cachedToken = token;
     }
 
     public Long getMemoryId() {
         return currentMemoryId.get();
     }
+    public void setRequest(com.aiassistant.channel.model.AgentRequest request) { currentRequest.set(request); }
+    public com.aiassistant.channel.model.AgentRequest getRequest() { return currentRequest.get(); }
 
     public String getToken() {
         String token = currentToken.get();
-        return token != null ? token : cachedToken;
+        return currentToken.get();
     }
 
     public void clear() {
         currentMemoryId.remove();
         currentToken.remove();
-        cachedToken = null;
+        currentRequest.remove();
     }
 
     public static Long getStaticMemoryId() {
@@ -36,27 +36,21 @@ public class SessionContext {
     }
 
     public static String getStaticToken() {
-        String token = currentToken.get();
-        return token != null ? token : cachedToken;
+        return currentToken.get();
     }
 
     public static void setStaticToken(String token) {
         currentToken.set(token);
-        cachedToken = token;
     }
 
     public static void clearSession() {
         currentMemoryId.remove();
         currentToken.remove();
-        cachedToken = null;
     }
 
     public static void clearToken() {
         currentToken.remove();
-        cachedToken = null;
     }
     
-    public static String getCachedToken() {
-        return cachedToken;
-    }
+    public static String getCachedToken() { return null; }
 }

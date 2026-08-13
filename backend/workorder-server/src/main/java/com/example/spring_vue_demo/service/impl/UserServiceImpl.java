@@ -22,6 +22,7 @@ import com.example.spring_vue_demo.vo.StaffBelongInfoVO;
 import lombok.val;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,9 +34,11 @@ public class UserServiceImpl extends ServiceImpl<StaffMapper, Staff> implements 
     private final DepartmentMapper departmentMapper;
     @Autowired
     private StaffMapper staffMapper;
-    public UserServiceImpl(CompanyMapper companyMapper, DepartmentMapper departmentMapper) {
+    private final PasswordEncoder passwordEncoder;
+    public UserServiceImpl(CompanyMapper companyMapper, DepartmentMapper departmentMapper, PasswordEncoder passwordEncoder) {
         this.companyMapper = companyMapper;
         this.departmentMapper = departmentMapper;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -157,7 +160,8 @@ public class UserServiceImpl extends ServiceImpl<StaffMapper, Staff> implements 
 
         // 设置更新字段
         if (StringUtils.isNotBlank(param.getPassword())) {
-            updateWrapper.set("password", param.getPassword());
+            updateWrapper.set("password", passwordEncoder.encode(param.getPassword()));
+            updateWrapper.setSql("auth_version = auth_version + 1");
         }
         if (StringUtils.isNotBlank(param.getPhone())) {
             updateWrapper.set("phone", param.getPhone());

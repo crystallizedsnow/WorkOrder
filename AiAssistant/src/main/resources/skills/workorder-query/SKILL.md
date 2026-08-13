@@ -16,7 +16,7 @@ description: 通过 workorder-cli 操作工单系统；所有操作先发现 dat
 不得跳过或交换以下状态：
 
 1. `DISCOVER`：执行 `workorder-cli list`，从实时列表选择 dataCode。
-2. `SCHEMA`：查询所选 dataCode 的最新 Schema。结合字段名、类型、`required`、描述、`cliTransport` 和 `cliFlag` 理解业务输入及传输方式。
+2. `SCHEMA`：只使用 `workorder-cli schema <dataCode>` 查询所选 dataCode 的最新 Schema（禁止使用 `schema --dataCode ...`）。结合字段名、类型、`required`、描述、`cliTransport` 和 `cliFlag` 理解业务输入及传输方式。
 3. `EXPECT`：建立期望参数清单。记录用户明确提供的每项业务约束、会话中需要复用的上一步结果、对应 Schema 字段和值。
 4. `CONTRACT`：读取所选 dataCode 的 CLI 实际参数契约。
 5. `PREVIEW`：写操作使用已确认的 CLI flag 执行 dry-run。
@@ -25,6 +25,8 @@ description: 通过 workorder-cli 操作工单系统；所有操作先发现 dat
 8. `EXECUTE`：确认后只删除已验证命令中的 `--dry-run`，其它字符不变，执行一次并停止。
 
 读操作完成 `CONTRACT` 后直接执行，不需要 dry-run。
+
+用户明确提供的 ID、类型、标题等值都是目标操作的输入参数。除非对应 Schema 或后端错误明确要求先查询验证，否则不得把这些参数误认成其他资源 ID、不得额外调用详情查询，也不得改变用户请求的操作类型。例如创建工单中的 `flowId` 应直接按创建 Schema 传入，不能当作工单 ID 查询。
 
 ## CONTRACT：所有接口共用的参数契约查询
 
@@ -98,17 +100,17 @@ dry-run 返回成功、退出码为 0 或包含 `[dry-run]`，都不代表参数
 
 CLI 返回 401 时：
 
-1. 使用只读文件工具读取 `C:\Users\Crystal\.workorder\account`。
-2. 解析 `phone` 和 `password`，调用 `login`。
-3. 登录成功后重试刚才失败的同一前置查询或命令。
-4. 文件缺失、字段不完整或登录失败时，再向用户索要凭据。
+1. 立即停止当前操作，不得调用 `login`、`auth login`、刷新接口或读取任何本地账号/Token 文件。
+2. 不得向用户索要、记录或传递手机号、密码、Refresh Token 或完整 Access Token。
+3. 明确告知用户当前会话凭证无效或已过期，请调用方重新登录并用新的 Bearer Access Token 重新请求 `/assistant/chat`。
+4. 只有新的 HTTP/Channel 请求携带有效凭证后才能重试；Agent 不得在同一轮自行替换身份。
 
-不得在最终回答中暴露密码或完整 Token。
+AiAssistant 执行 CLI 时会把当前请求的 Access Token 隔离注入子进程。CLI 命令中禁止出现 `login`、`auth login`、`--password` 或 `--token`。
 
 ## 错误处理
 
 - 参数错误：回到 `SCHEMA → EXPECT → CONTRACT`，不得原样重试。
-- 401：按认证恢复流程处理后重试。
+- 401：按认证恢复流程停止本轮；等待调用方用新凭证重新发起请求。
 - 403：停止并报告权限不足。
 - 404：重新执行 `DISCOVER`，不得猜 dataCode。
 - 网络超时：最多重试 3 次，间隔 1、2、4 秒。

@@ -17,11 +17,14 @@ import com.example.spring_vue_demo.param.ChangeStaffInfoParam;
 import com.example.spring_vue_demo.param.StaffPageParam;
 import com.example.spring_vue_demo.service.DepartmentService;
 import com.example.spring_vue_demo.service.StaffService;
+import com.example.spring_vue_demo.service.AuthTokenService;
+import com.example.spring_vue_demo.service.ChannelIdentityService;
 import com.example.spring_vue_demo.utils.OrganizationCodeUtils;
 import com.example.spring_vue_demo.vo.AddStaffVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -36,6 +39,10 @@ public class StaffServiceImpl extends ServiceImpl<StaffMapper, Staff> implements
     private DepartmentMapper departmentMapper;
     @Autowired
     private CompanyMapper companyMapper;
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+    @Autowired private AuthTokenService authTokenService;
+    @Autowired private ChannelIdentityService channelIdentityService;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     @Override
     public Result addStaff(AddStaffParam param) {
@@ -89,7 +96,8 @@ public class StaffServiceImpl extends ServiceImpl<StaffMapper, Staff> implements
         }
         staff.setPhone(param.getPhone());
         staff.setEmail(param.getEmail());
-        staff.setPassword("123456");
+        staff.setPassword(passwordEncoder.encode("123456"));
+        staff.setAuthVersion(0);
         String staffNumber = OrganizationCodeUtils.generateStaffCode();
         staff.setStaffNumber(staffNumber);
         staffMapper.insert(staff);
@@ -241,6 +249,10 @@ public class StaffServiceImpl extends ServiceImpl<StaffMapper, Staff> implements
         updateWrapper.set("update_time", System.currentTimeMillis() / 1000);
 
         staffMapper.update(null, updateWrapper);
+        if (!java.util.Objects.equals(staff.getStatus(), param.getStatus())) {
+            authTokenService.revokeAllForUser(staff.getId());
+            if (param.getStatus() != 0) channelIdentityService.disableBindingsForUser(staff.getId());
+        }
         return Result.success();
     }
 }

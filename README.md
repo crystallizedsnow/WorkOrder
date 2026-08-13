@@ -133,7 +133,6 @@ workorder-cli 命令执行 → CLI Service 代理 → Backend API
 | 模块 | 测试文件 |
 |------|----------|
 | AiAssistant | AiAssistantApplicationTests.java |
-| AiAssistant | LongTermMemoryServiceTest.java |
 | AiAssistant | StageOneAcceptanceTest.java |
 | backend | SpringVueDemoApplicationTests.java |
 | backend | AuthControllerTest.java |

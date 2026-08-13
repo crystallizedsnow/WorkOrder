@@ -53,14 +53,27 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data string `json:"data"`
+	Code int               `json:"code"`
+	Msg  string            `json:"msg"`
+	Data AuthTokenResponse `json:"data"`
+}
+
+type AuthTokenResponse struct {
+	TokenType             string    `json:"tokenType"`
+	AccessToken           string    `json:"accessToken"`
+	AccessTokenExpiresAt  time.Time `json:"accessTokenExpiresAt"`
+	RefreshToken          string    `json:"refreshToken"`
+	RefreshTokenExpiresAt time.Time `json:"refreshTokenExpiresAt"`
 }
 
 type QueryRequest struct {
 	DataCode string                 `json:"dataCode"`
 	Params   map[string]interface{} `json:"params"`
+}
+
+type BindingChallengeResponse struct {
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 func (c *Client) Login(ctx context.Context, phone, password string) (*LoginResponse, error) {
@@ -95,6 +108,102 @@ func (c *Client) Login(ctx context.Context, phone, password string) (*LoginRespo
 	}
 
 	return &loginResp, nil
+}
+
+func (c *Client) Refresh(ctx context.Context, refreshToken string) (*LoginResponse, error) {
+	url := fmt.Sprintf("%s/api/auth/refresh", c.backendURL)
+	data, _ := json.Marshal(map[string]string{"refreshToken": refreshToken})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var result LoginResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) Logout(ctx context.Context, accessToken string) error {
+	url := fmt.Sprintf("%s/api/auth/logout", c.backendURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("logout failed with status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *Client) CreateBindingChallenge(ctx context.Context, accessToken string) (*BindingChallengeResponse, error) {
+	url := fmt.Sprintf("%s/api/channel/identity/binding-challenges", c.backendURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	var envelope struct {
+		Code int                      `json:"code"`
+		Msg  string                   `json:"msg"`
+		Data BindingChallengeResponse `json:"data"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, err
+	}
+	if envelope.Code != 1 {
+		return nil, fmt.Errorf("%s", envelope.Msg)
+	}
+	return &envelope.Data, nil
+}
+
+func (c *Client) UnbindFeishu(ctx context.Context, accessToken string) error {
+	url := fmt.Sprintf("%s/api/channel/identity/unbind", c.backendURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var envelope struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+	_ = json.Unmarshal(body, &envelope)
+	if envelope.Code != 1 {
+		return fmt.Errorf("%s", envelope.Msg)
+	}
+	return nil
 }
 
 func (c *Client) Get(ctx context.Context, url string, headers map[string]string) (*ApiResponse, error) {
@@ -254,7 +363,7 @@ func GetAuthHeaders() map[string]string {
 	token := auth.GetToken()
 	headers := make(map[string]string)
 	if token != "" {
-		headers["Authorization"] = token
+		headers["Authorization"] = "Bearer " + token
 	}
 	return headers
 }
