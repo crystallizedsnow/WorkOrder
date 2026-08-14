@@ -18,7 +18,7 @@
 | 8 | 上下文压缩 | 对话上下文自动压缩，节省token | 参考 learn-claude-code s08 的上下文压缩策略 |
 | 9 | Prompt工程 | 动态系统提示词生成，上下文管理 | 模板文件 + 动态变量，运行时构建 |
 | 10 | 知识库与RAG | Markdown知识库 + Elasticsearch向量检索 | 本地向量化模型 + 向量数据库检索 |
-| 11 | 记忆模块 | 短期记忆（MongoDB）+ 长期记忆（文件存储+Markdown索引） | 参考 learn-claude-code s09 的记忆管理模式 |
+| 11 | 记忆模块 | 会话级短期记忆（MongoDB） | 长期记忆已移除；压缩按独立短期记忆方案重构 |
 | 12 | SSO认证 | 调用backend登录接口获取token，本地文件存储 | 自研登录工具 + Token持久化 |
 
 ### ReAct 模式说明
@@ -48,14 +48,14 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 │  │                    Agent Loop (主循环)                            │  │
 │  │                                                                   │  │
 │  │  ┌──────────────┐    ┌──────────────┐    ┌───────────────────┐   │  │
-│  │  │ 调用 LLM     │◀───│ 消息管理      │◀───│ ChatMemoryProvider│   │  │
+│  │  │ 调用 LLM     │◀───│ 消息管理      │◀───│ ChatMemoryStore   │   │  │
 │  │  │ 生成响应     │    │ (含压缩逻辑)  │    │  (MongoDB持久化)   │   │  │
 │  │  └──────┬───────┘    └──────┬───────┘    └───────────────────┘   │  │
 │  │         │                   │                                   │  │
 │  │         │                   ▼                                   │  │
 │  │         │         ┌───────────────────┐                         │  │
-│  │         │         │ ContextCompressor │                         │  │
-│  │         │         │  (消息数>20压缩)   │                         │  │
+│  │         │         │ SessionMemory     │                         │  │
+│  │         │         │ （待阶段二/三实现） │                         │  │
 │  │         │         └───────────────────┘                         │  │
 │  │         ▼                                                       │  │
 │  │  ┌──────────────┐                                                │  │
@@ -87,9 +87,7 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 │  │  └───────────────────────────────────────────────────────────┘   │  │
 │  │                                                                   │  │
 │  │  ┌───────────────────────────────────────────────────────────┐   │  │
-│  │  │ 长期记忆（每轮调用前后）                                   │   │  │
-│  │  │ LongTermMemoryService.loadMemories() → 注入上下文         │   │  │
-│  │  │ LongTermMemoryService.extractMemories() → 提取新记忆      │   │  │
+│  │  │ 会话级短期记忆（MongoDB）；不建设跨会话长期记忆             │   │  │
 │  │  └───────────────────────────────────────────────────────────┘   │  │
 │  └───────────────────────────────────────────────────────────────────┘  │
 │                                                                         │
@@ -125,8 +123,8 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 
 **架构说明**：
 - Agent 通过 `chatLanguageModel.generate()` 调用 LLM，每次调用前通过 `ContentRetriever` 执行 RAG 检索
-- 消息通过 `ChatMemoryProvider` 管理，读取时自动触发 `ContextCompressor` 压缩
-- 长期记忆通过 `LongTermMemoryService` 在每轮调用前后分别执行加载和提取
+- 当前消息通过 `ChatMemoryStore` 读取和保存；结构化短期记忆与压缩按 `short-term-memory_technical_design.md` 分阶段实现
+- 不加载、提取或保存跨会话长期记忆
 - 工具通过 `ToolDispatcher` 动态分发，支持多种工具处理器
 - CLI二进制文件（workorder-cli）作为Agent与后端服务之间的桥梁，参考飞书CLI设计
 - 三期将发布 `@workOrder/cli` npm包，通过 `npx @workOrder/cli@latest install` 安装
@@ -165,7 +163,7 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 | Prompt 工程 | 构建系统提示词，优化上下文 | 模板文件 + 动态变量 |
 | CLI 执行工具 | 执行CLI命令，获取JSON结果 | subprocess + ProcessBuilder |
 | 文件操作工具 | 创建和读取文件 | Apache POI + Java IO |
-| 记忆管理 | 管理会话上下文和长期记忆 | MongoDB + 文件存储 |
+| 记忆管理 | 管理会话级短期上下文 | MongoDB |
 | LLM 集成 | 调用智谱 GLM-4.5-Air | LangChain4j |
 | workorder-cli | CLI二进制文件，桥接Agent与后端 | Go开发的CLI工具（三期） |
 
@@ -204,8 +202,8 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 **实现方式**：
 - 使用 while(true) 循环，每轮执行：调用LLM → 提取工具调用 → 执行工具 → 结果写回 → 判断是否继续
 - **RAG检索集成**：每次调用LLM之前，使用当前用户消息作为查询调用 ContentRetriever 获取相关知识库文档，将检索结果作为上下文消息注入到系统提示词或消息列表中
-- **长期记忆集成**：每轮对话开始前调用 LongTermMemoryService.loadMemories() 加载相关长期记忆注入上下文；每轮对话结束后调用 LongTermMemoryService.extractMemories() 从对话中提取新记忆
-- 消息通过 ChatMemoryProvider 管理，读取时自动触发 ContextCompressor 压缩
+- **短期记忆集成**：当前通过 ChatMemoryStore 读取和保存会话消息；后续接入统一 SessionMemoryService
+- 不建设或注入跨会话长期记忆
 - 最大思考次数限制为20次，防止无限循环
 
 **交付物**：
@@ -218,14 +216,13 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 - 测试多轮工具调用链
 - 测试最大思考次数限制
 - 测试RAG检索是否正确注入
-- 测试长期记忆加载是否生效
+- 测试删除长期记忆后应用启动、普通对话和工具调用正常
 
 **与其他模块的交互**：
 - 调用 chatLanguageModel 进行推理
 - 调用 ContentRetriever 进行RAG检索
-- 调用 ChatMemoryProvider 管理消息
+- 调用 ChatMemoryStore 管理当前会话消息
 - 调用 ToolDispatcher 分发工具调用
-- 调用 LongTermMemoryService 管理长期记忆
 - 通过 HookRegistry 触发生命周期钩子
 
 ### 3.3 Tool Use（工具调用）
@@ -365,15 +362,13 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 **功能描述**：实现对话上下文自动压缩机制，当上下文超过阈值时自动总结历史消息，节省Token。
 
 **实现方式**：
-- ContextCompressor 在消息数超过20条或Token数超过8000时触发压缩
-- 使用LLM对历史消息进行摘要总结
-- 保留最近10条完整消息 + 历史摘要
-- CompressingChatMemory 包装原始 ChatMemory，在读取时自动压缩
+- 旧的固定消息数、字符数估算和内存包装器已删除
+- 后续按动态 token 预算、完整工具原子单元和结构化滚动摘要实现
 
 **交付物**：
-- ContextCompressor 上下文压缩器
-- CompressingChatMemory 包装类
-- MemoryConfig 集成压缩逻辑
+- SessionMemoryService 会话记忆服务
+- TokenEstimator 和消息原子分段组件
+- 结构化滚动摘要及 MongoDB 持久化
 
 **测试方法**：
 - 验证消息数超过阈值时自动触发压缩
@@ -382,8 +377,7 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 - 验证压缩不影响对话连贯性
 
 **与其他模块的交互**：
-- ChatMemoryProvider 通过 CompressingChatMemory 提供消息
-- AgentLoop 读取消息时自动触发压缩
+- AgentLoop 通过 SessionMemoryService 准备上下文并保存本轮增量
 
 ### 3.9 Prompt工程
 
@@ -440,30 +434,23 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 
 ### 3.11 记忆模块
 
-**功能描述**：实现短期记忆和长期记忆的管理，支持会话级和用户级记忆。
+**功能描述**：实现会话级短期记忆管理；不提供跨会话用户长期记忆。
 
 **实现方式**：
-- 短期记忆：使用 MongoDB 存储会话消息，通过 ChatMemoryProvider 管理，支持上下文压缩
-- 长期记忆：使用文件系统存储，通过 Markdown 索引管理，支持记忆提取和合并
-- 长期记忆存储结构：.memory/MEMORY.md（索引）+ 各类型记忆文件
-- 每轮对话前调用 loadMemories() 加载相关记忆
-- 每轮对话后调用 extractMemories() 提取新记忆
+- 短期记忆：使用 MongoDB 存储会话消息；结构化摘要、最近完整消息、归属、版本和 TTL 按短期记忆方案改造
+- 动态系统提示词和 RAG 不作为普通会话历史重复持久化
 - 记忆文件数达到10个时触发合并去重
 
 **交付物**：
-- MemoryConfig 短期记忆配置
-- LongTermMemoryService 长期记忆服务
-- 记忆文件目录结构规范
+- 短期记忆配置和 MongoDB 会话仓储
+- SessionMemoryService 及上下文压缩组件
 
 **测试方法**：
-- 验证短期记忆持久化和读取
-- 验证长期记忆加载和提取
-- 验证记忆合并去重机制
-- 验证记忆文件索引重建
+- 验证短期记忆持久化、读取、压缩、过期和用户隔离
+- 验证删除长期记忆后应用启动和 Agent 主链路正常
 
 **与其他模块的交互**：
-- AgentLoop 调用 LongTermMemoryService 的加载和提取方法
-- ContextCompressor 与短期记忆集成
+- AgentLoop 通过统一短期记忆服务准备和保存上下文
 
 ### 3.12 SSO认证
 
@@ -530,8 +517,7 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 |------|------|----------|
 | 上下文压缩触发 | 对话超过20轮 | 自动压缩历史消息，保留最近10条+摘要 |
 | 短期记忆持久化 | 跨会话查询历史对话 | MongoDB中正确存储和读取 |
-| 长期记忆加载 | 用户偏好设置 | 相关记忆被正确加载并注入上下文 |
-| 长期记忆提取 | 对话中提到偏好 | 新记忆被提取并保存 |
+| 长期记忆移除回归 | 应用启动、普通对话、工具调用 | 不依赖本地记忆文件且主链路正常 |
 
 ### 4.5 TodoWrite测试
 
@@ -576,9 +562,8 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 | **知识库与RAG** | 文档导入完成，ContentRetriever可用 | 文档导入测试、检索相关性测试 | LLM接口改造 | P0 |
 | **Prompt工程** | 动态提示词生成器完成 | 提示词内容验证、动态更新测试 | Skill Loading | P1 |
 | **Skill Loading** | 技能扫描和懒加载机制完成 | 技能元数据解析测试、loadSkill测试 | 无 | P1 |
-| **上下文压缩** | ContextCompressor和CompressingChatMemory完成 | 压缩触发测试、消息保留测试 | Agent Loop | P1 |
-| **短期记忆** | ChatMemoryProvider配置完成，MongoDB集成 | 会话持久化测试、消息读取测试 | 上下文压缩 | P1 |
-| **长期记忆** | LongTermMemoryService完成，文件存储实现 | 记忆加载测试、提取测试、合并测试 | Agent Loop | P1 |
+| **上下文压缩** | 动态预算、原子分段和滚动摘要完成 | 压缩触发、协议完整和摘要回滚测试 | Agent Loop | P1 |
+| **短期记忆** | SessionMemoryService 与 MongoDB 结构化存储完成 | 持久化、归属、并发和过期测试 | 上下文压缩 | P1 |
 | **SSO认证** | SsoCliTools和TokenFileManager完成 | 登录测试、Token管理测试 | 无 | P1 |
 | **Hook机制** | HookRegistry和内置Hook完成 | 钩子触发测试、日志记录测试 | Agent Loop | P2 |
 | **错误恢复** | ErrorClassifier/RetryService/FallbackService完成 | 错误分类测试、重试测试、兜底测试 | Agent Loop | P2 |
@@ -605,11 +590,10 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 |------|--------|--------|------|
 | 2.1 | Skill Loading | SkillLoader、SKILL.md规范 | 无 |
 | 2.2 | Prompt工程 | DynamicPromptGenerator | Skill Loading |
-| 2.3 | 上下文压缩 | ContextCompressor、CompressingChatMemory | 无 |
-| 2.4 | 短期记忆 | MemoryConfig、MongoDB集成 | 上下文压缩 |
-| 2.5 | 长期记忆 | LongTermMemoryService、文件存储 | Agent Loop |
+| 2.3 | 上下文压缩 | TokenEstimator、原子分段和滚动摘要 | 无 |
+| 2.4 | 短期记忆 | SessionMemoryService、MongoDB结构化存储 | 上下文压缩 |
 | 2.6 | SSO认证 | SsoCliTools、TokenFileManager | 无 |
-| 2.7 | 更新Agent Loop | 集成长期记忆加载和提取 | 2.5 |
+| 2.7 | 更新Agent Loop | 接入统一短期记忆服务 | 2.4 |
 
 **阶段三：增强能力（P2）**
 
@@ -632,7 +616,7 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 | 工具可用性 | 所有工具均可被Agent正确调用 |
 | RAG准确性 | 检索结果与查询相关，能辅助回答 |
 | 错误处理 | 错误分类正确，重试和兜底策略有效 |
-| 记忆持久性 | 短期记忆和长期记忆正确存储和读取 |
+| 记忆持久性 | 会话级短期记忆正确存储、读取、隔离和过期 |
 | 性能指标 | 响应时间 < 3秒（不含LLM推理时间），并发 > 10用户 |
 | 安全性 | Token管理安全，权限控制有效 |
 
@@ -650,7 +634,6 @@ ReAct 是一种让 LLM 在推理过程中通过调用工具获取外部信息的
 | all-MiniLM-L6-v2 | 本地模型 | 向量化模型（384维） |
 | Apache POI | 5.2.x | Excel 文件操作 |
 | MongoDB | 6.x | 会话记忆存储 |
-| 文件存储 | - | 长期记忆存储（Markdown索引） |
 | Elasticsearch | 8.x | 向量数据库 |
 | Spring Retry | 2.0.x | 重试机制 |
 

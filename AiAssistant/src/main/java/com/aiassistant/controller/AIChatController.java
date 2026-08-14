@@ -1,6 +1,8 @@
 package com.aiassistant.controller;
 
 import com.aiassistant.channel.AgentGateway;
+import com.aiassistant.channel.AuthenticatedUserResolver;
+import com.aiassistant.memory.SessionMemoryService;
 import com.aiassistant.channel.model.AgentRequest;
 import com.aiassistant.channel.model.ChannelType;
 import com.aiassistant.common.ChatForm;
@@ -25,6 +27,12 @@ public class AIChatController {
     @Autowired
     private AgentGateway agentGateway;
 
+    @Autowired
+    private AuthenticatedUserResolver authenticatedUsers;
+
+    @Autowired
+    private SessionMemoryService sessionMemoryService;
+
     @GetMapping("/")
     public String healthCheck() {
         String traceId = MDC.get("traceId");
@@ -45,10 +53,26 @@ public class AIChatController {
         params.put("authHeader", authHeader != null ? "***" : null);
         LogUtils.entrance(traceId, "/assistant/chat", "POST", params);
         
-        return agentGateway.execute(new AgentRequest(chatForm.getMemoryId(), null, chatForm.getMessage(),
-                        authHeader.substring(7), ChannelType.WEB, null, null, null, traceId))
+        String token = authHeader.substring(7);
+        String userId;
+        try { userId = authenticatedUsers.resolve(token); }
+        catch (SecurityException error) { throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, error.getMessage()); }
+        catch (Exception error) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Token validation unavailable"); }
+        return agentGateway.execute(new AgentRequest(chatForm.getMemoryId(), userId, chatForm.getMessage(),
+                        token, ChannelType.WEB, null, null, "web:" + chatForm.getMemoryId(), traceId))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnComplete(() -> LogUtils.returnLog(traceId, "/assistant/chat", "POST", "completed"))
                 .doOnError(e -> LogUtils.error(traceId, "/assistant/chat", params, e));
+    }
+
+    @DeleteMapping("/memory/{sessionId}")
+    public void clearMemory(@PathVariable("sessionId") Long sessionId,
+                            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ") || authHeader.length() == 7)
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authorization must use Bearer scheme");
+        String token = authHeader.substring(7);
+        String userId = authenticatedUsers.resolve(token);
+        sessionMemoryService.clear(new AgentRequest(sessionId, userId, "clear-memory", token,
+                ChannelType.WEB, null, null, "web:" + sessionId, MDC.get("traceId")));
     }
 }

@@ -681,12 +681,12 @@ def main():
     results = {}
 
     # ---- 场景1: 用户确认通过执行 ----
-    print("\n" + "*"*70)
-    print("* 执行场景1: 用户确认通过执行")
-    print("*"*70)
-    r1 = test_scenario_1_user_confirm_execute()
-    results["场景1-确认执行"] = r1
-    time.sleep(3)
+    # print("\n" + "*"*70)
+    # print("* 执行场景1: 用户确认通过执行")
+    # print("*"*70)
+    # r1 = test_scenario_1_user_confirm_execute()
+    # results["场景1-确认执行"] = r1
+    # time.sleep(3)
 
     # # ---- 场景2: 用户取消执行 ----
     # print("\n" + "*"*70)
@@ -697,12 +697,12 @@ def main():
     # time.sleep(3)
 
     # ---- 场景3: 用户修改参数后执行 ----
-    # print("\n" + "*"*70)
-    # print("* 执行场景3: 用户修改参数后执行")
-    # print("*"*70)
-    # r3 = test_scenario_3_modify_params()
-    # results["场景3-修改参数"] = r3
-    # time.sleep(3)
+    print("\n" + "*"*70)
+    print("* 执行场景3: 用户修改参数后执行")
+    print("*"*70)
+    r3 = test_scenario_3_modify_params()
+    results["场景3-修改参数"] = r3
+    time.sleep(3)
 
     # ---- 场景4: 用户修改命令类型后执行 ----
     # print("\n" + "*"*70)

@@ -17,9 +17,21 @@ import java.util.Map;
 @AllArgsConstructor
 public class Document {
 
+    /** 稳定片段 ID，同时作为 Elasticsearch _id。 */
+    private String id;
+
     private String text;
 
     private String source;
+
+    private String sourceName;
+
+    private String sourceVersion;
+
+    private String headingPath;
+
+    @Builder.Default
+    private TrustLevel trustLevel = TrustLevel.REVIEWED;
 
     @Builder.Default
     private Map<String, Object> metadata = new HashMap<>();

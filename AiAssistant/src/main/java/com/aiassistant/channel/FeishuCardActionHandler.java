@@ -10,10 +10,12 @@ import com.lark.oapi.event.cardcallback.model.CallBackToast;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTrigger;
 import com.lark.oapi.event.cardcallback.model.P2CardActionTriggerResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.util.Map;
 
 @Component
+@ConditionalOnProperty(name = "workorder.channel.feishu.enabled", havingValue = "true")
 public class FeishuCardActionHandler extends P2CardActionTriggerHandler {
     private final WriteConfirmationService confirmations;
     private final FeishuIdentityClient identities;

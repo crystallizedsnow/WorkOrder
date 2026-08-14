@@ -64,11 +64,8 @@ cli-service/src/main/resources/application.yaml
 .env.local
 .env.*.local
 
-# Memory/output directories
-.memory/
+# Output directories
 output/
-memory_*.json
-memory_merged_*.json
 
 # Token/auth files
 .auth_token

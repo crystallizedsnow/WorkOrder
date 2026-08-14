@@ -9,15 +9,21 @@ import com.aiassistant.llm.ChatModel;
 import com.aiassistant.llm.ChatResponse;
 import com.aiassistant.llm.ToolCall;
 import com.aiassistant.llm.ToolDefinition;
-import com.aiassistant.memory.ChatMemoryStore;
+import com.aiassistant.memory.MemoryContext;
+import com.aiassistant.memory.SessionMemoryService;
+import com.aiassistant.memory.ToolResultProtector;
 import com.aiassistant.prompt.DynamicPromptGenerator;
 import com.aiassistant.rag.ContentRetriever;
 import com.aiassistant.rag.Document;
+import com.aiassistant.rag.RagContext;
+import com.aiassistant.rag.CitationService;
+import com.aiassistant.rag.QueryContextualizer;
+import com.aiassistant.rag.RagStateService;
+import com.aiassistant.rag.RagStatus;
 import com.aiassistant.recovery.ErrorClassifier;
 import com.aiassistant.recovery.ErrorType;
 import com.aiassistant.recovery.FallbackService;
 import com.aiassistant.recovery.RetryService;
-import com.aiassistant.service.LongTermMemoryService;
 import com.aiassistant.todo.TodoManager;
 import com.aiassistant.channel.model.AgentRequest;
 import com.aiassistant.channel.model.ChannelType;
@@ -32,8 +38,10 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * ReAct Agent 主循环。
@@ -49,9 +57,6 @@ import java.util.Locale;
 @Component
 @Slf4j
 public class AgentLoop {
-
-    @Value("${workorder.memory.enabled:false}")
-    private boolean longTermMemoryEnabled;
 
     @Value("${workorder.agent.max-rounds:10}")
     private int maxRounds;
@@ -69,10 +74,19 @@ public class AgentLoop {
     private ContentRetriever contentRetriever;
 
     @Autowired
-    private ChatMemoryStore chatMemoryStore;
+    private CitationService citationService;
 
     @Autowired
-    private LongTermMemoryService longTermMemoryService;
+    private QueryContextualizer queryContextualizer;
+
+    @Autowired
+    private RagStateService ragStateService;
+
+    @Autowired
+    private SessionMemoryService sessionMemoryService;
+
+    @Autowired
+    private ToolResultProtector toolResultProtector;
 
     @Autowired
     private SessionContext sessionContext;
@@ -111,7 +125,7 @@ public class AgentLoop {
                 hookRegistry.executeHooks(HookType.SESSION_START,
                         HookContext.builder().sessionId(sessionId).build());
 
-                String result = executeReActLoop(sessionId, query);
+                String result = executeReActLoop(request);
                 sink.next(result);
                 sink.complete();
             } catch (Exception e) {
@@ -125,37 +139,25 @@ public class AgentLoop {
         });
     }
 
-    private String executeReActLoop(Long sessionId, String initialQuery) {
-        List<ChatMessage> messages = new ArrayList<>();
-
-        longTermMemoryService.initializeMemoryDirectory();
-
-        String longTermMemoryContext = loadLongTermMemory(sessionId);
-        messages.add(ChatMessage.system(buildSystemPrompt(longTermMemoryContext)));
-
-        String ragContext = retrieveKnowledge(initialQuery);
-        if (ragContext != null && !ragContext.isEmpty()) {
-            messages.add(ChatMessage.system("[知识库信息]\n" + ragContext));
-        }
-
-        List<ChatMessage> history = loadSessionHistory(sessionId);
-        if (!history.isEmpty()) {
-            messages.addAll(history);
-        }
-        messages.add(ChatMessage.user(initialQuery));
+    private String executeReActLoop(AgentRequest request) {
+        Long sessionId = request.sessionId();
+        String initialQuery = request.query();
+        String retrievalQuery = queryContextualizer.contextualize(initialQuery,
+                sessionMemoryService.recentUserMessages(request, 2));
+        RagContext ragContext = retrieveKnowledge(retrievalQuery);
+        List<ToolDefinition> tools = toolDispatcher.getToolDefinitions();
+        MemoryContext memoryContext = sessionMemoryService.prepare(request, dynamicPromptGenerator.generate(),
+                ragContext.promptContext(), initialQuery, tools);
+        List<ChatMessage> messages = new ArrayList<>(memoryContext.modelMessages());
 
         if (isConfirmationMessage(initialQuery) && findLatestDryRunCommand(messages) == null) {
             return "当前会话没有已完成且等待确认的 dry-run 预演，不能执行真实写操作。请先重新提交写操作请求并检查预演结果。";
         }
 
-        List<ToolDefinition> tools = toolDispatcher.getToolDefinitions();
-
-        StringBuilder conversationHistory = new StringBuilder();
-        conversationHistory.append("用户: ").append(initialQuery).append("\n");
-
         int roundsWithoutTodoUpdate = 0;
         boolean hasActiveTodos = todoManager.hasActiveTodos(sessionId);
         boolean longTask = isLongTask(initialQuery) || hasActiveTodos;
+        Set<String> executedToolCalls = new HashSet<>();
 
         for (int round = 0; round < maxRounds; round++) {
             log.info("ReAct循环第 {} 轮", round + 1);
@@ -177,6 +179,13 @@ public class AgentLoop {
 
             String responseText = response.getContent();
             log.debug("LLM响应: {}", responseText);
+
+            if ((responseText == null || responseText.isBlank()) && !response.hasToolCalls()) {
+                log.warn("LLM-EMPTY-RESPONSE sessionId={} round={} finishReason={} promptTokens={} completionTokens={}",
+                        sessionId, round + 1, response.getFinishReason(), response.getPromptTokens(),
+                        response.getCompletionTokens());
+                return "模型本轮未生成有效内容，请稍后重试。";
+            }
 
             hookRegistry.executeHooks(HookType.POST_LLM_RESPONSE,
                     HookContext.builder()
@@ -220,11 +229,19 @@ public class AgentLoop {
                     String arguments = toolCall.getFunction().getArguments();
                     log.info("执行工具调用: {} args={}", toolName, arguments);
 
+                    String callFingerprint = toolName + "\n" + (arguments == null ? "" : arguments.trim());
+                    if (!executedToolCalls.add(callFingerprint)) {
+                        String duplicate = wrapToolResult(toolName, false,
+                                "同一轮中相同工具和参数已经执行，重复调用不会得到更多数据。请使用已有结果回答，或修改查询条件。");
+                        messages.add(ChatMessage.tool(toolCall.getId(), toolName, duplicate));
+                        log.warn("TOOL-DUPLICATE-BLOCKED sessionId={} toolName={} args={}", sessionId, toolName, arguments);
+                        continue;
+                    }
+
                     if (isUnconfirmedDryRunExecution(messages, toolName, arguments, initialQuery)) {
                         String rejected = wrapToolResult(toolName, false,
                                 "写操作未获授权：真实命令与最近一次 dry-run 相同，但当前用户消息不是有效的 confirm_execute JSON。必须停止并等待确认。");
                         messages.add(ChatMessage.tool(toolCall.getId(), toolName, rejected));
-                        conversationHistory.append("工具结果[").append(toolName).append("]: ").append(rejected).append("\n");
                         log.warn("拒绝未确认的真实写命令 - sessionId: {}", sessionId);
                         continue;
                     }
@@ -235,7 +252,17 @@ public class AgentLoop {
                                     .toolName(toolName)
                                     .build());
 
-                    String toolResult = executeToolWithRecovery(toolName, arguments);
+                    String toolResult = toolResultProtector.protect(executeToolWithRecovery(toolName, arguments));
+
+                    hookRegistry.executeHooks(HookType.POST_TOOL_USE,
+                            HookContext.builder()
+                                    .sessionId(sessionId)
+                                    .toolName(toolName)
+                                    .toolResult(toolResult)
+                                    .build());
+
+                    log.info("工具执行结果: {}", toolResult.length() > 200 ? toolResult.substring(0, 200) + "..." : toolResult);
+                    messages.add(ChatMessage.tool(toolCall.getId(), toolName, toolResult));
 
                     AgentRequest currentRequest = sessionContext.getRequest();
                     if (currentRequest != null && currentRequest.channel() == ChannelType.FEISHU && "executeCliCommand".equals(toolName)) {
@@ -246,23 +273,11 @@ public class AgentLoop {
                             confirmationNotifier.notify(pending);
                             // 飞书确认卡片已经接管后续流程。立即结束本轮 Agent，避免模型继续生成
                             // confirm_execute 文本，或在按钮回调并发执行时再次尝试真实写命令。
-                            chatMemoryStore.updateMessages(sessionId, messages);
+                            sessionMemoryService.save(request, memoryContext, messages, "WAITING_CONFIRMATION");
                             return "";
                         }
                     }
 
-                    hookRegistry.executeHooks(HookType.POST_TOOL_USE,
-                            HookContext.builder()
-                                    .sessionId(sessionId)
-                                    .toolName(toolName)
-                                    .toolResult(toolResult)
-                                    .build());
-
-                    log.info("工具执行结果: {}", toolResult.length() > 200 ? toolResult.substring(0, 200) + "..." : toolResult);
-
-                    messages.add(ChatMessage.tool(toolCall.getId(), toolName, toolResult));
-                    conversationHistory.append("工具结果[").append(toolName).append("]: ")
-                            .append(toolResult).append("\n");
                 }
 
                 // Nag reminder：连续多轮未更新 todo 时提醒
@@ -274,17 +289,16 @@ public class AgentLoop {
             } else {
                 // 无工具调用 → 最终回答（按结构化规范解析）
                 String finalAnswer = parseStructuredAnswer(responseText);
+                CitationService.CitationValidation citationValidation = citationService.validateAndRender(finalAnswer, ragContext);
+                finalAnswer = citationValidation.answer();
                 messages.add(ChatMessage.assistant(finalAnswer));
-                conversationHistory.append("助手: ").append(finalAnswer).append("\n");
-                chatMemoryStore.updateMessages(sessionId, messages);
-                extractAndSaveLongTermMemory(sessionId, conversationHistory.toString());
+                sessionMemoryService.save(request, memoryContext, messages, "ACTIVE");
                 return finalAnswer;
             }
         }
 
         log.warn("达到最大思考次数限制");
-        chatMemoryStore.updateMessages(sessionId, messages);
-        extractAndSaveLongTermMemory(sessionId, conversationHistory.toString());
+        sessionMemoryService.save(request, memoryContext, messages, "INTERRUPTED");
         return "抱歉，我已经尝试了多次，但未能完成您的请求。请简化问题或分步骤提问。";
     }
 
@@ -424,56 +438,6 @@ public class AgentLoop {
         }
     }
 
-    private boolean containsCredentialContent(ChatMessage message) {
-        if (message == null) {
-            return false;
-        }
-        String content = message.getContent();
-        if (content != null) {
-            String normalized = content.toLowerCase(Locale.ROOT);
-            if (normalized.contains("--password") || normalized.contains("auth login")
-                    || normalized.contains("账号密码") || normalized.contains("手机号和密码")
-                    || normalized.contains("\"password\"") || normalized.contains("login('")) {
-                return true;
-            }
-        }
-        return message.getToolCalls() != null && message.getToolCalls().stream().anyMatch(this::isForbiddenCredentialToolCall);
-    }
-
-    private List<ChatMessage> loadSessionHistory(Long sessionId) {
-        try {
-            List<ChatMessage> history = chatMemoryStore.getMessages(sessionId);
-            if (history == null || history.isEmpty()) {
-                return List.of();
-            }
-
-            java.util.Set<String> forbiddenCallIds = new java.util.HashSet<>();
-            for (ChatMessage message : history) {
-                if (message != null && message.getToolCalls() != null) {
-                    message.getToolCalls().stream().filter(this::isForbiddenCredentialToolCall)
-                            .map(ToolCall::getId).filter(java.util.Objects::nonNull).forEach(forbiddenCallIds::add);
-                }
-            }
-            List<ChatMessage> filtered = new ArrayList<>();
-            for (ChatMessage message : history) {
-                if (message == null || "system".equals(message.getRole())) {
-                    continue;
-                }
-                if (containsCredentialContent(message)) {
-                    continue;
-                }
-                if ("tool".equals(message.getRole()) && forbiddenCallIds.contains(message.getToolCallId())) {
-                    continue;
-                }
-                filtered.add(message);
-            }
-            return filtered;
-        } catch (Exception e) {
-            log.warn("加载会话历史失败: sessionId={}, error={}", sessionId, e.getMessage());
-            return List.of();
-        }
-    }
-
     private String executeToolWithRecovery(String toolName, String arguments) {
         try {
             String raw = retryService.executeWithRetry(() -> toolDispatcher.executeTool(toolName, arguments), toolName);
@@ -557,59 +521,23 @@ public class AgentLoop {
         return trimmed.isEmpty() ? content : trimmed;
     }
 
-    private String buildSystemPrompt(String longTermMemoryContext) {
-        StringBuilder prompt = new StringBuilder();
-        prompt.append(dynamicPromptGenerator.generate());
-        if (longTermMemoryContext != null && !longTermMemoryContext.isEmpty()) {
-            prompt.append("\n## 用户记忆\n");
-            prompt.append(longTermMemoryContext);
-        }
-        return prompt.toString();
-    }
-
-    private String loadLongTermMemory(Long sessionId) {
-        if (!longTermMemoryEnabled) {
-            log.debug("长期记忆已禁用，跳过加载");
-            return null;
-        }
-        try {
-            List<LongTermMemoryService.MemoryEntry> memories = longTermMemoryService.loadMemories(sessionId);
-            if (memories == null || memories.isEmpty()) {
-                return null;
-            }
-            return longTermMemoryService.getMemorySummary(sessionId);
-        } catch (Exception e) {
-            log.warn("加载长期记忆失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private void extractAndSaveLongTermMemory(Long sessionId, String conversation) {
-        if (!longTermMemoryEnabled) {
-            log.debug("长期记忆已禁用，跳过保存");
-            return;
-        }
-        try {
-            longTermMemoryService.extractMemories(sessionId, conversation);
-        } catch (Exception e) {
-            log.warn("提取和保存长期记忆失败: {}", e.getMessage());
-        }
-    }
-
-    private String retrieveKnowledge(String query) {
+    private RagContext retrieveKnowledge(String query) {
         try {
             List<Document> documents = contentRetriever.retrieve(query);
             if (documents == null || documents.isEmpty()) {
-                return null;
+                RagStatus status = ragStateService.snapshot().status();
+                if (status == RagStatus.FAILED || status == RagStatus.INITIALIZING || status == RagStatus.BUILDING) {
+                    return RagContext.notice("知识库当前尚未就绪。不要猜测项目特有的状态、权限、SLA 或流程规则；如问题依赖这些知识，请明确告知用户知识库暂不可用。");
+                }
+                if (status == RagStatus.READY || status == RagStatus.DEGRADED) {
+                    return RagContext.notice("本次未从可信知识库检索到依据。不要猜测项目特有的状态、权限、SLA 或流程规则。");
+                }
+                return RagContext.empty();
             }
-            StringBuilder context = new StringBuilder();
-            for (Document doc : documents) {
-                context.append(doc.getText()).append("\n\n");
-            }
-            return context.toString().trim();
+            return citationService.prepare(documents);
         } catch (Exception e) {
             log.warn("RAG检索失败: {}", e.getMessage());
-            return null;
+            return RagContext.empty();
         }
     }
 }

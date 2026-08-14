@@ -91,7 +91,7 @@ workorder-cli 命令执行 → CLI Service 代理 → Backend API
 | ReAct Agent | 基于LangChain4j的显式思考-行动循环 |
 | 工具调用 | CLI执行、文件操作、认证管理、Todo管理 |
 | RAG检索 | 基于知识库的智能问答 |
-| 记忆管理 | 短期记忆(MongoDB) + 长期记忆(文件存储) |
+| 记忆管理 | 会话级短期记忆（MongoDB）；不提供跨会话长期记忆 |
 | 错误恢复 | 错误分类、指数退避重试、兜底策略 |
 | Hook机制 | 日志记录、Token统计 |
 

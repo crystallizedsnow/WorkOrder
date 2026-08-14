@@ -10,9 +10,11 @@ import reactor.core.publisher.Flux;
 @RequiredArgsConstructor
 public class DefaultAgentGateway implements AgentGateway {
     private final AgentLoop agentLoop;
+    private final SessionExecutionCoordinator coordinator;
 
     @Override
     public Flux<String> execute(AgentRequest request) {
-        return agentLoop.run(request);
+        return Flux.defer(() -> Flux.fromIterable(coordinator.execute(request.sessionId(),
+                () -> agentLoop.run(request).collectList().block())));
     }
 }
