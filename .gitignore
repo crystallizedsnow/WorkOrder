@@ -59,6 +59,24 @@ AiAssistant/src/main/resources/application-local.yaml
 backend/workorder-server/src/main/resources/application.yaml
 cli-service/src/main/resources/application.yaml
 
+# Generic local/sensitive configuration (commit sanitized examples instead)
+**/application-local.yml
+**/application-local.yaml
+**/application-*.local.yml
+**/application-*.local.yaml
+**/application-secret.yml
+**/application-secret.yaml
+**/application-secrets.yml
+**/application-secrets.yaml
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*credentials*.json
+*secrets*.json
+
 # Environment variables
 *.env
 .env.local
@@ -66,6 +84,8 @@ cli-service/src/main/resources/application.yaml
 
 # Output directories
 output/
+test-output/
+.run-logs/
 
 # Token/auth files
 .auth_token
@@ -93,6 +113,7 @@ mongo-data/
 mongodb/
 
 # Go build outputs
+.gocache/
 workorder-cli/workorder-cli
 workorder-cli/workorder-cli.exe
 workorder-cli/*.exe
@@ -103,3 +124,11 @@ workorder-cli/*.a
 # Test scripts outputs
 test_*.log
 *.testresult
+# Local pnpm cache and TypeScript incremental build state
+.pnpm-store/
+*.tsbuildinfo
+
+# Local notes and files unrelated to the work-order system
+todo.txt
+后端开发面试题.md
+字节二面21-30工单系统参考答案.md

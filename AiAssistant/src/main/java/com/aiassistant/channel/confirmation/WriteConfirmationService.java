@@ -12,6 +12,7 @@ import java.security.MessageDigest;
 import java.time.*;
 import java.util.HexFormat;
 import java.util.UUID;
+import org.springframework.data.domain.Sort;
 
 @Service @RequiredArgsConstructor @Slf4j
 public class WriteConfirmationService {
@@ -25,6 +26,29 @@ public class WriteConfirmationService {
                 .tenantId(tenant).conversationId(conversation).requesterOpenId(openId).command(command).commandDigest(digest(command))
                 .summary(summary).status(WriteConfirmation.Status.PENDING).createdAt(now).expiresAt(now.plus(ttl)).purgeAt(now.plus(retention)).traceId(traceId).build();
         mongo.save(value); audit(value,"created"); return value;
+    }
+    public WriteConfirmation createFromPreview(Long sessionId,String userId,String tenant,String conversation,String openId,
+                                               String dryRun,String previewId,String summary,String traceId){
+        cancelPrevious(sessionId, userId);
+        String command=executionCommand(dryRun, previewId); Instant now=Instant.now();
+        WriteConfirmation value=WriteConfirmation.builder().operationId(UUID.randomUUID().toString()).sessionId(sessionId).userId(userId)
+                .tenantId(tenant).conversationId(conversation).requesterOpenId(openId).command(command).previewId(previewId)
+                .commandDigest(digest(command)).summary(summary).status(WriteConfirmation.Status.PENDING).createdAt(now)
+                .expiresAt(now.plus(ttl)).purgeAt(now.plus(retention)).traceId(traceId).build();
+        mongo.save(value); audit(value,"created"); return value;
+    }
+    public WriteConfirmation latestPending(Long sessionId,String userId){
+        Query query=Query.query(Criteria.where("sessionId").is(sessionId).and("userId").is(userId)
+                .and("status").is(WriteConfirmation.Status.PENDING)).with(Sort.by(Sort.Direction.DESC,"createdAt")).limit(1);
+        return mongo.findOne(query,WriteConfirmation.class);
+    }
+    public Decision claimWeb(Long sessionId,String userId,boolean confirm){
+        WriteConfirmation current=latestPending(sessionId,userId);
+        if(current==null)return new Decision(false,"当前会话没有等待确认的预演",null);
+        if(current.getExpiresAt().isBefore(Instant.now())){transition(current.getOperationId(),WriteConfirmation.Status.PENDING,WriteConfirmation.Status.EXPIRED,"expired");return new Decision(false,"确认已过期",current);}
+        WriteConfirmation.Status target=confirm?WriteConfirmation.Status.EXECUTING:WriteConfirmation.Status.CANCELLED;
+        WriteConfirmation claimed=transition(current.getOperationId(),WriteConfirmation.Status.PENDING,target,confirm?"claimed":"cancelled");
+        return claimed==null?new Decision(false,"该操作已经处理，不能重复确认",current):new Decision(true,confirm?"已确认":"已取消",claimed);
     }
     public Decision claim(String operationId,String tenant,String conversation,String openId,boolean confirm){
         WriteConfirmation current=mongo.findById(operationId,WriteConfirmation.class);
@@ -46,9 +70,18 @@ public class WriteConfirmationService {
         var opts=org.springframework.data.mongodb.core.FindAndModifyOptions.options().returnNew(true);WriteConfirmation v=mongo.findAndModify(q,u,opts,WriteConfirmation.class);if(v!=null)audit(v,action);return v;
     }
     static String removeDryRun(String c){return c.trim().replaceFirst("(?i)\\s+--dry-run(?=\\s|$)","").replaceAll("\\s+"," ");}
+    static String executionCommand(String command,String previewId){
+        String replacement=" --preview-id "+previewId;
+        return command.trim().replaceFirst("(?i)\\s+--dry-run(?=\\s|$)",replacement).replaceAll("\\s+"," ");
+    }
     static String digest(String c){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(c.getBytes(StandardCharsets.UTF_8)));}catch(Exception e){throw new IllegalStateException(e);}}
     private String truncate(String s){return s==null?"":s.substring(0,Math.min(500,s.length()));}
     private boolean eq(String a,String b){return java.util.Objects.equals(a,b);}
+    private void cancelPrevious(Long sessionId,String userId){
+        Query q=Query.query(Criteria.where("sessionId").is(sessionId).and("userId").is(userId)
+                .and("status").is(WriteConfirmation.Status.PENDING));
+        mongo.updateMulti(q,new Update().set("status",WriteConfirmation.Status.CANCELLED).set("decidedAt",Instant.now()),WriteConfirmation.class);
+    }
     private void audit(WriteConfirmation v,String action){log.info("WRITE-CONFIRM-AUDIT operationId={} userId={} channel=FEISHU conversationId={} digest={} action={} status={} traceId={}",v.getOperationId(),v.getUserId(),v.getConversationId(),v.getCommandDigest(),action,v.getStatus(),v.getTraceId());}
     public record Decision(boolean accepted,String message,WriteConfirmation confirmation){}
 }

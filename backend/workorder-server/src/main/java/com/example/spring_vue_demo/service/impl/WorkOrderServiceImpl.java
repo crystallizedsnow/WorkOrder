@@ -49,9 +49,6 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.annotation.EnableAsync;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -85,7 +82,6 @@ import static com.example.spring_vue_demo.enums.WorkOrderStatusEnum.AUDITING;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@EnableAsync
 public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder> implements WorkOrderService {
     private final WorkOrderHelper workOrderHelper;
     private final HandleUserInfoService iHandleUserInfoService;
@@ -147,7 +143,54 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
         workOrder = workOrderHelper.addDetailHandleInfo(pageHandleUserInfos, workOrder);
         //转换vo
         WorkOrderDetailVO workOrderDetailVO = WorkOrderConverter.INSTANCE.toDetailVO(workOrder);
+        workOrderDetailVO.setAllowedActions(buildAllowedActions(workOrder, pageHandleUserInfos));
         return workOrderDetailVO;
+    }
+
+    private List<WorkOrderActionVO> buildAllowedActions(WorkOrder workOrder, List<HandleUserInfo> handleInfos) {
+        Staff current = StaffHolder.get();
+        if (current == null) return List.of();
+        long userId = current.getId();
+        List<WorkOrderActionVO> actions = new ArrayList<>();
+        boolean auditor = unfinished(handleInfos, userId, HandleUserInfoHandleTypeEnum.AUDIT.getValue());
+        boolean distributer = unfinished(handleInfos, userId, HandleUserInfoHandleTypeEnum.DISTRIBUTE.getValue());
+        boolean handler = unfinished(handleInfos, userId, HandleUserInfoHandleTypeEnum.HANDLE.getValue());
+        boolean checker = unfinished(handleInfos, userId, HandleUserInfoHandleTypeEnum.CHECK.getValue());
+        Integer status = workOrder.getStatus();
+
+        if (auditor && (Objects.equals(status, WorkOrderStatusEnum.UNAUDITED.getValue())
+                || Objects.equals(status, WorkOrderStatusEnum.AUDITING.getValue()))) {
+            actions.add(action("approve", "通过审核", false, true, false));
+            actions.add(action("reject", "驳回", false, true, true));
+        } else if (distributer && Objects.equals(status, WorkOrderStatusEnum.UNDISTRIBUTED.getValue())) {
+            actions.add(action("distribute", "派单", true, true, false));
+        } else if (handler && (Objects.equals(status, WorkOrderStatusEnum.HANDLING.getValue())
+                || Objects.equals(status, WorkOrderStatusEnum.DELAYED.getValue())
+                || Objects.equals(status, WorkOrderStatusEnum.CHECK_FAILURE.getValue()))) {
+            actions.add(action("apply_help", "请求协助", true, true, false));
+            actions.add(action("urge", "催单", false, true, false));
+            actions.add(action("finish", "完成处理", false, true, false));
+        } else if (checker && Objects.equals(status, WorkOrderStatusEnum.FINISHED.getValue())) {
+            actions.add(action("check_success", "确认完成", false, true, false));
+            actions.add(action("check_failure", "仍有问题", false, true, true));
+        }
+        if (status < WorkOrderStatusEnum.FINISHED.getValue()) {
+            boolean submitter = handleInfos.stream().anyMatch(value -> Objects.equals(value.getUserId(), userId)
+                    && Objects.equals(value.getHandleType(), HandleUserInfoHandleTypeEnum.SUBMIT.getValue()));
+            if (submitter) actions.add(action("cancel", "取消工单", false, false, true));
+            // Matches the existing deleteOrder authorization: every authenticated user may delete before FINISHED.
+            actions.add(action("delete", "删除工单", false, false, true));
+        }
+        return actions;
+    }
+
+    private boolean unfinished(List<HandleUserInfo> values, long userId, int handleType) {
+        return values.stream().anyMatch(value -> Objects.equals(value.getUserId(), userId)
+                && Objects.equals(value.getHandleType(), handleType) && !Boolean.TRUE.equals(value.getFinished()));
+    }
+
+    private WorkOrderActionVO action(String type, String label, boolean assigned, boolean remark, boolean dangerous) {
+        return new WorkOrderActionVO(type, label, assigned, remark, dangerous);
     }
 
     @Override
@@ -200,6 +243,7 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
                 workOrder.getStatus(),
                 workOrder.getCode(),
                 receiverIds,
+                StaffHolder.get().getId(),
                 finished
         );
         //构建返回VO
@@ -276,6 +320,7 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
                 workOrder.getStatus(),
                 workOrder.getCode(),
                 List.of(staff.getId()),
+                staff.getId(),
                 true
         );
 //        long auditId = workOrderHelper.findAuditId(staff.getId());
@@ -307,6 +352,7 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
                 AUDITING.getValue(),
                 workOrder.getCode(),
                 List.of(auditId),
+                StaffHolder.get().getId(),
                 true
         );
         //添加操作信息
@@ -360,31 +406,6 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
         //转发
         dispatchToAuditor(workOrder.getId(), workOrder.getCode(), nextAuditId, false);
         return Result.success(workOrderApprovalVO);
-    }
-
-    @Async
-    @Scheduled(fixedDelay = 5 * 60 * 1000)
-    @Transactional
-    public void checkAndUpdateOverdueOrders() {
-        LocalDateTime now = LocalDateTime.now();
-        LambdaQueryWrapper<WorkOrder> getDelayWrapper = HandleUserInfoQuery.getByStatusAndDeadlineTime(now, List.of(WorkOrderStatusEnum.HANDLING.getValue(), WorkOrderStatusEnum.CHECK_FAILURE.getValue()));
-        List<WorkOrder> overdueOrders = this.list(getDelayWrapper);
-        for (WorkOrder order : overdueOrders) {
-            //更新工单状态
-            LambdaUpdateWrapper<WorkOrder> updateWrapper = WorkOrderQuery.getUpdateStatusByIdWrapper(order.getId(), WorkOrderStatusEnum.DELAYED.getValue());
-            update(updateWrapper);
-            // 查工单的处理人
-            List<Long> handleUserIds = workOrderHelper.getHandleUserIds(order.getId());
-            // 发送通知给用户
-            // 发送信息
-            workOrderMessageProducer.sendWorkOrderMessages(
-                    WorkOrderStatusEnum.DELAYED.getValue(),
-                    order.getCode(),
-                    handleUserIds,
-                    true
-            );
-        }
-        log.info("已完成一次延期工单扫描");
     }
 
     //   @Override

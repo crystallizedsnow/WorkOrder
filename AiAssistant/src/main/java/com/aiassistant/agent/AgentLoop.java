@@ -27,7 +27,6 @@ import com.aiassistant.recovery.RetryService;
 import com.aiassistant.todo.TodoManager;
 import com.aiassistant.channel.model.AgentRequest;
 import com.aiassistant.channel.model.ChannelType;
-import com.aiassistant.channel.confirmation.WriteConfirmationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -105,8 +104,6 @@ public class AgentLoop {
 
     @Autowired
     private TodoManager todoManager;
-    @Autowired private WriteConfirmationService confirmations;
-    @Autowired private com.aiassistant.channel.ConfirmationNotifier confirmationNotifier;
 
     private static final int NAG_REMINDER_ROUNDS = 3;
 
@@ -149,10 +146,6 @@ public class AgentLoop {
         MemoryContext memoryContext = sessionMemoryService.prepare(request, dynamicPromptGenerator.generate(),
                 ragContext.promptContext(), initialQuery, tools);
         List<ChatMessage> messages = new ArrayList<>(memoryContext.modelMessages());
-
-        if (isConfirmationMessage(initialQuery) && findLatestDryRunCommand(messages) == null) {
-            return "当前会话没有已完成且等待确认的 dry-run 预演，不能执行真实写操作。请先重新提交写操作请求并检查预演结果。";
-        }
 
         int roundsWithoutTodoUpdate = 0;
         boolean hasActiveTodos = todoManager.hasActiveTodos(sessionId);
@@ -238,14 +231,6 @@ public class AgentLoop {
                         continue;
                     }
 
-                    if (isUnconfirmedDryRunExecution(messages, toolName, arguments, initialQuery)) {
-                        String rejected = wrapToolResult(toolName, false,
-                                "写操作未获授权：真实命令与最近一次 dry-run 相同，但当前用户消息不是有效的 confirm_execute JSON。必须停止并等待确认。");
-                        messages.add(ChatMessage.tool(toolCall.getId(), toolName, rejected));
-                        log.warn("拒绝未确认的真实写命令 - sessionId: {}", sessionId);
-                        continue;
-                    }
-
                     hookRegistry.executeHooks(HookType.PRE_TOOL_USE,
                             HookContext.builder()
                                     .sessionId(sessionId)
@@ -263,20 +248,6 @@ public class AgentLoop {
 
                     log.info("工具执行结果: {}", toolResult.length() > 200 ? toolResult.substring(0, 200) + "..." : toolResult);
                     messages.add(ChatMessage.tool(toolCall.getId(), toolName, toolResult));
-
-                    AgentRequest currentRequest = sessionContext.getRequest();
-                    if (currentRequest != null && currentRequest.channel() == ChannelType.FEISHU && "executeCliCommand".equals(toolName)) {
-                        String command = extractCliCommand(arguments);
-                        if (command != null && command.contains("--dry-run") && !isErrorResponse(toolResult)) {
-                            var pending = confirmations.create(sessionId, currentRequest.userId(), currentRequest.tenantId(),
-                                    currentRequest.sourceConversationId(), currentRequest.senderId(), command, toolResult, currentRequest.traceId());
-                            confirmationNotifier.notify(pending);
-                            // 飞书确认卡片已经接管后续流程。立即结束本轮 Agent，避免模型继续生成
-                            // confirm_execute 文本，或在按钮回调并发执行时再次尝试真实写命令。
-                            sessionMemoryService.save(request, memoryContext, messages, "WAITING_CONFIRMATION");
-                            return "";
-                        }
-                    }
 
                 }
 
@@ -360,41 +331,6 @@ public class AgentLoop {
         return actionCount >= 3 && hasDependency;
     }
 
-    private boolean isUnconfirmedDryRunExecution(List<ChatMessage> messages, String toolName,
-                                                  String arguments, String currentUserMessage) {
-        if (!"executeCliCommand".equals(toolName)) {
-            return false;
-        }
-        String currentCommand = extractCliCommand(arguments);
-        if (currentCommand == null || currentCommand.contains("--dry-run")) {
-            return false;
-        }
-        String latestDryRun = findLatestDryRunCommand(messages);
-        if (latestDryRun == null || !removeDryRun(latestDryRun).equals(normalizeCommand(currentCommand))) {
-            return false;
-        }
-        return !isValidConfirmation(currentUserMessage);
-    }
-
-    private String findLatestDryRunCommand(List<ChatMessage> messages) {
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            ChatMessage message = messages.get(i);
-            if (message.getToolCalls() == null) {
-                continue;
-            }
-            for (int j = message.getToolCalls().size() - 1; j >= 0; j--) {
-                ToolCall call = message.getToolCalls().get(j);
-                if ("executeCliCommand".equals(call.getFunction().getName())) {
-                    String command = extractCliCommand(call.getFunction().getArguments());
-                    if (command != null && command.contains("--dry-run")) {
-                        return command;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
     private String extractCliCommand(String arguments) {
         try {
             JsonNode node = MAPPER.readTree(arguments);
@@ -410,32 +346,8 @@ public class AgentLoop {
         return null;
     }
 
-    private String removeDryRun(String command) {
-        return normalizeCommand(command.replaceFirst("(?i)\\s+--dry-run(?=\\s)", ""));
-    }
-
     private String normalizeCommand(String command) {
         return command == null ? null : command.trim().replaceAll("\\s+", " ");
-    }
-
-    private boolean isValidConfirmation(String message) {
-        try {
-            JsonNode node = MAPPER.readTree(message);
-            return "confirm_execute".equals(node.path("action").asText())
-                    && "last_dry_run".equals(node.path("target").asText())
-                    && node.path("confirmed").asBoolean(false);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private boolean isConfirmationMessage(String message) {
-        try {
-            JsonNode node = MAPPER.readTree(message);
-            return "confirm_execute".equals(node.path("action").asText());
-        } catch (Exception e) {
-            return false;
-        }
     }
 
     private String executeToolWithRecovery(String toolName, String arguments) {

@@ -186,12 +186,14 @@ func init() {
 	rootCmd.PersistentFlags().String("cli-service-url", "http://localhost:5000", "CLI Service URL")
 	rootCmd.PersistentFlags().Bool("debug", false, "开启调试模式")
 	rootCmd.PersistentFlags().Bool("dry-run", false, "预览模式，不实际执行")
+	rootCmd.PersistentFlags().String("preview-id", "", "已确认的写操作预演凭证")
 
 	viper.BindPFlag("token", rootCmd.PersistentFlags().Lookup("token"))
 	viper.BindPFlag("backend-url", rootCmd.PersistentFlags().Lookup("backend-url"))
 	viper.BindPFlag("cli-service-url", rootCmd.PersistentFlags().Lookup("cli-service-url"))
 	viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 	viper.BindPFlag("dry-run", rootCmd.PersistentFlags().Lookup("dry-run"))
+	viper.BindPFlag("preview-id", rootCmd.PersistentFlags().Lookup("preview-id"))
 
 	viper.BindEnv("token", "WORKORDER_TOKEN")
 	viper.BindEnv("backend-url", "WORKORDER_BACKEND_URL")

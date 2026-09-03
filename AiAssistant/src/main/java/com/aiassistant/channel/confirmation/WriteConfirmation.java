@@ -16,6 +16,7 @@ public class WriteConfirmation {
     private String conversationId;
     private String requesterOpenId;
     private String command;
+    private String previewId;
     private String commandDigest;
     private String summary;
     private Status status;

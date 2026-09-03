@@ -54,13 +54,32 @@ func checkDryRun() bool {
 	return viper.GetBool("dry-run")
 }
 
+func getPreviewID() string {
+	for i, arg := range os.Args {
+		if arg == "--preview-id" && i+1 < len(os.Args) {
+			return os.Args[i+1]
+		}
+	}
+	return viper.GetString("preview-id")
+}
+
 func handleDryRun(dataCode string, params map[string]interface{}) {
-	if checkDryRun() {
-		engine := dryrun.NewEngine()
-		plan := engine.BuildPlan(dataCode, params)
-		engine.PrintPlan(plan)
+	client := api.NewClient()
+	resp, err := client.Preview(context.Background(), dataCode, params, api.GetAuthHeaders())
+	if err != nil {
+		output.PrintError(1, fmt.Sprintf("预演失败: %v", err))
 		return
 	}
+	if resp.Code != 0 {
+		output.PrintError(resp.Code, resp.Message)
+		return
+	}
+	plan, err := dryrun.DecodePlan(resp.Data)
+	if err != nil {
+		output.PrintError(1, fmt.Sprintf("预演响应解析失败: %v", err))
+		return
+	}
+	dryrun.NewEngine().PrintPlan(plan)
 }
 
 func handleWorkOrderCreate(args []string) {
@@ -120,7 +139,7 @@ func handleWorkOrderCreate(args []string) {
 	ctx := context.Background()
 	headers := api.GetAuthHeaders()
 
-	resp, err := client.Execute(ctx, "work_order_create", params, headers)
+	resp, err := client.Execute(ctx, getPreviewID(), "work_order_create", params, headers)
 	if err != nil {
 		output.PrintError(1, fmt.Sprintf("创建工单失败: %v", err))
 		return
@@ -175,7 +194,7 @@ func handleWorkOrderHandle(args []string) {
 	ctx := context.Background()
 	headers := api.GetAuthHeaders()
 
-	resp, err := client.Execute(ctx, "work_order_handle", params, headers)
+	resp, err := client.Execute(ctx, getPreviewID(), "work_order_handle", params, headers)
 	if err != nil {
 		output.PrintError(1, fmt.Sprintf("处理工单失败: %v", err))
 		return
@@ -215,7 +234,7 @@ func handleWorkOrderDelete(args []string) {
 	ctx := context.Background()
 	headers := api.GetAuthHeaders()
 
-	resp, err := client.Execute(ctx, "work_order_delete", params, headers)
+	resp, err := client.Execute(ctx, getPreviewID(), "work_order_delete", params, headers)
 	if err != nil {
 		output.PrintError(1, fmt.Sprintf("删除工单失败: %v", err))
 		return
@@ -259,7 +278,7 @@ func handleWorkOrderCancel(args []string) {
 	ctx := context.Background()
 	headers := api.GetAuthHeaders()
 
-	resp, err := client.Execute(ctx, "work_order_cancel", params, headers)
+	resp, err := client.Execute(ctx, getPreviewID(), "work_order_cancel", params, headers)
 	if err != nil {
 		output.PrintError(1, fmt.Sprintf("取消工单失败: %v", err))
 		return
@@ -310,7 +329,7 @@ func handleWorkOrderApproval(args []string) {
 	ctx := context.Background()
 	headers := api.GetAuthHeaders()
 
-	resp, err := client.Execute(ctx, "work_order_approval", params, headers)
+	resp, err := client.Execute(ctx, getPreviewID(), "work_order_approval", params, headers)
 	if err != nil {
 		output.PrintError(1, fmt.Sprintf("审批工单失败: %v", err))
 		return

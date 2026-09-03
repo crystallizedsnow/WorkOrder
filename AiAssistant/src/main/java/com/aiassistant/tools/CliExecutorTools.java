@@ -8,6 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.aiassistant.channel.confirmation.WriteConfirmationService;
+import com.aiassistant.channel.ConfirmationNotifier;
+import com.aiassistant.channel.model.AgentRequest;
+import com.aiassistant.channel.model.ChannelType;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -20,12 +25,19 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Component
 @ConfigurationProperties(prefix = "workorder.cli")
 @Data
 public class CliExecutorTools {
+
+    private static final Pattern PREVIEW_ID = Pattern.compile("预演凭证:\\s*(wp_[A-Za-z0-9]+)");
+
+    @Autowired private SessionContext sessionContext;
+    @Autowired private WriteConfirmationService confirmations;
+    @Autowired private ConfirmationNotifier confirmationNotifier;
 
     private Map<String, String> tools = new HashMap<>();
 
@@ -63,6 +75,7 @@ public class CliExecutorTools {
                 return wrapErrorResult(exitCode, result);
             }
 
+            registerPreview(command, result);
             return result;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -111,6 +124,18 @@ public class CliExecutorTools {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    private void registerPreview(String command, String result) {
+        if (command == null || !command.contains("--dry-run") || result == null) return;
+        var matcher = PREVIEW_ID.matcher(result);
+        if (!matcher.find()) return;
+        AgentRequest request = sessionContext.getRequest();
+        if (request == null || request.sessionId() == null || request.userId() == null) return;
+        String requester = request.senderId() == null ? request.userId() : request.senderId();
+        var pending = confirmations.createFromPreview(request.sessionId(), request.userId(), request.tenantId(),
+                request.sourceConversationId(), requester, command, matcher.group(1), result, request.traceId());
+        if (request.channel() == ChannelType.FEISHU) confirmationNotifier.notify(pending);
     }
 
     private String escapeJson(String value) {

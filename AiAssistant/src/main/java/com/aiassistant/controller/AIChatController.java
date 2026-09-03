@@ -19,6 +19,8 @@ import java.util.HashMap;
 import java.util.Map;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.codec.ServerSentEvent;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/assistant")
@@ -42,7 +44,7 @@ public class AIChatController {
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> streamChat(@RequestBody ChatForm chatForm, @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+    public Flux<ServerSentEvent<AgentStreamEvent>> streamChat(@RequestBody ChatForm chatForm, @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ") || authHeader.length() == 7) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authorization must use Bearer scheme");
         }
@@ -58,11 +60,20 @@ public class AIChatController {
         try { userId = authenticatedUsers.resolve(token); }
         catch (SecurityException error) { throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, error.getMessage()); }
         catch (Exception error) { throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Token validation unavailable"); }
-        return agentGateway.execute(new AgentRequest(chatForm.getMemoryId(), userId, chatForm.getMessage(),
+        String requestId = traceId == null ? UUID.randomUUID().toString() : traceId;
+        Flux<ServerSentEvent<AgentStreamEvent>> answer = agentGateway.execute(new AgentRequest(chatForm.getMemoryId(), userId, chatForm.getMessage(),
                         token, ChannelType.WEB, null, null, "web:" + chatForm.getMemoryId(), traceId))
                 .subscribeOn(Schedulers.boundedElastic())
+                .map(content -> event("message.delta", AgentStreamEvent.content(requestId, content)))
+                .concatWithValues(event("message.done", AgentStreamEvent.content(requestId, "")))
                 .doOnComplete(() -> LogUtils.returnLog(traceId, "/assistant/chat", "POST", "completed"))
-                .doOnError(e -> LogUtils.error(traceId, "/assistant/chat", params, e));
+                .doOnError(e -> LogUtils.error(traceId, "/assistant/chat", params, e))
+                .onErrorResume(error -> Flux.just(event("error", AgentStreamEvent.error(requestId, error))));
+        return Flux.concat(Flux.just(event("tool.status", AgentStreamEvent.status(requestId, "thinking"))), answer);
+    }
+
+    private ServerSentEvent<AgentStreamEvent> event(String name, AgentStreamEvent data) {
+        return ServerSentEvent.<AgentStreamEvent>builder(data).event(name).build();
     }
 
     @DeleteMapping("/memory/{sessionId}")

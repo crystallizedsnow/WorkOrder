@@ -20,7 +20,16 @@
         </processorPath>
         <module name="workorder-server" />
       </profile>
-      <profile name="Annotation profile for workorder-backend" enabled="true">
+      <profile name="Annotation profile for AiAssistant" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$PROJECT_DIR$/../../maven_dep/repository/org/projectlombok/lombok/1.18.30/lombok-1.18.30.jar" />
+        </processorPath>
+        <module name="AiAssistant" />
+      </profile>
+      <profile name="Annotation profile for cli-service" enabled="true">
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
@@ -28,11 +37,14 @@
           <entry name="$PROJECT_DIR$/../../maven_dep/repository/org/projectlombok/lombok/1.18.32/lombok-1.18.32.jar" />
         </processorPath>
         <module name="workorder-api" />
+        <module name="cli-service" />
       </profile>
     </annotationProcessing>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="AiAssistant" options="-parameters" />
+      <module name="cli-service" options="-parameters" />
       <module name="spring-vue-demo" options="" />
     </option>
   </component>

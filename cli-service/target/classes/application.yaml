@@ -4,6 +4,16 @@ server:
 workorder:
     backend:
         url: http://localhost:8080
+    write-preview:
+        ttl: PT10M
+        key-prefix: "workorder:write-preview:"
+
+spring:
+    data:
+        redis:
+            host: localhost
+            port: 6379
+            timeout: 10000ms
 
 logging:
     pattern:

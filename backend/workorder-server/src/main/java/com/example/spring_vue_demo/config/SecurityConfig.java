@@ -25,7 +25,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable()) // ✅ 新写法
                 .authorizeHttpRequests(auth -> auth
          //               .anyRequest().permitAll()
-                        .requestMatchers("/user/login", "/api/auth/refresh", "/api/channel/identity/internal/**", "/doc.html", "/webjars/**", "/v3/api-docs/**", "/swagger-resources/**").permitAll()
+                        .requestMatchers("/user/login", "/api/auth/refresh", "/api/auth/web/login", "/api/auth/web/refresh", "/api/auth/web/logout", "/api/channel/identity/internal/**", "/doc.html", "/webjars/**", "/v3/api-docs/**", "/swagger-resources/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

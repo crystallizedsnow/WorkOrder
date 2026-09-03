@@ -129,6 +129,13 @@ public class AuthTokenService {
         if (session != null) revokeFamily(session.getFamilyId());
     }
 
+    @Transactional
+    public void logoutRefresh(String rawRefresh) {
+        if (rawRefresh == null || rawRefresh.isBlank()) return;
+        RefreshSession session = findByHash(hash(rawRefresh));
+        if (session != null) revokeFamily(session.getFamilyId());
+    }
+
     public Staff authenticatedStaff(String authorization) {
         ValidateTokenResult result = validateBearer(authorization);
         return result.isValid() ? staffMapper.selectById(Long.valueOf(result.getUserId())) : null;

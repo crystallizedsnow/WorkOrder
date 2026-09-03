@@ -8,4 +8,5 @@ public interface ChannelIdentityApi {
     ChannelBindingResult find(String serviceKey, FeishuIdentityRequest request);
     void unbind(String authorization);
     ChannelTokenResponse exchange(String serviceKey, ChannelTokenRequest request);
+    BatchResolveBindingResponse batchResolve(String serviceKey, BatchResolveBindingRequest request);
 }

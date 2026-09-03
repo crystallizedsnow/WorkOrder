@@ -33,6 +33,11 @@ public class ChannelIdentityController {
     public Result exchange(@RequestHeader("X-Workorder-Service-Key") String serviceKey, @Valid @RequestBody ChannelTokenRequest request) {
         return call(() -> service.exchange(serviceKey, request));
     }
+    @PostMapping("/internal/batch-resolve")
+    public Result batchResolve(@RequestHeader("X-Workorder-Service-Key") String serviceKey,
+                               @Valid @RequestBody BatchResolveBindingRequest request) {
+        return call(() -> service.batchResolve(serviceKey, request));
+    }
     private Result call(java.util.concurrent.Callable<Object> action) {
         try { Object data = action.call(); return data == null ? Result.success() : Result.success(data); }
         catch (SecurityException ex) { return Result.error(403, ex.getMessage()); }

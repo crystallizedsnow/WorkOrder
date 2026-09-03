@@ -1,0 +1,44 @@
+:root {
+  color-scheme: light;
+  --wo-primary: #315efb;
+  --wo-primary-soft: #eef2ff;
+  --wo-success: #14a06f;
+  --wo-warning: #e99419;
+  --wo-danger: #e5484d;
+  --wo-bg: #f5f7fb;
+  --wo-surface: #ffffff;
+  --wo-text: #172033;
+  --wo-text-secondary: #65708a;
+  --wo-border: #e6eaf2;
+  --wo-radius: 12px;
+  --el-color-primary: var(--wo-primary);
+  --el-border-radius-base: 8px;
+  --el-font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { width: 100%; min-width: 768px; min-height: 100%; margin: 0; }
+body { color: var(--wo-text); background: var(--wo-bg); font-family: var(--el-font-family); }
+button, input, textarea { font: inherit; }
+a { color: inherit; text-decoration: none; }
+
+.page { display: flex; flex-direction: column; gap: 18px; }
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.page-title { margin: 0; font-size: 24px; line-height: 1.35; letter-spacing: -.02em; }
+.page-description { margin: 5px 0 0; color: var(--wo-text-secondary); font-size: 14px; }
+.surface { padding: 20px; background: var(--wo-surface); border: 1px solid var(--wo-border); border-radius: var(--wo-radius); }
+.muted { color: var(--wo-text-secondary); }
+.empty-hint { padding: 32px; color: var(--wo-text-secondary); text-align: center; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.toolbar__group { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.metric-card { padding: 20px; background: #fff; border: 1px solid var(--wo-border); border-radius: var(--wo-radius); }
+.metric-card__label { color: var(--wo-text-secondary); font-size: 13px; }
+.metric-card__value { margin-top: 10px; font-size: 30px; font-weight: 700; }
+.chart-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; }
+.el-table { --el-table-border-color: var(--wo-border); }
+.el-dialog { border-radius: 14px; }
+
+@media (max-width: 1280px) {
+  .metric-grid { grid-template-columns: repeat(2, 1fr); }
+}

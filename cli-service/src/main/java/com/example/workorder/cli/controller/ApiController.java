@@ -4,9 +4,15 @@ import com.example.workorder.cli.dto.request.QueryRequest;
 import com.example.workorder.cli.dto.response.ApiResponse;
 import com.example.workorder.cli.dto.response.DataCodeDTO;
 import com.example.workorder.cli.dto.response.SchemaDTO;
+import com.example.workorder.cli.dto.response.PreviewPlanDTO;
 import com.example.workorder.cli.service.QueryService;
 import com.example.workorder.cli.service.SchemaService;
 import com.example.workorder.cli.service.WriteService;
+import com.example.workorder.cli.service.PreviewService;
+import com.example.workorder.cli.service.WritePreviewManager;
+import com.example.workorder.cli.service.GuardedWriteService;
+import com.example.workorder.cli.guard.WriteGuardException;
+import com.example.workorder.cli.preview.WritePreview;
 import com.example.workorder.cli.util.LogUtils;
 import jakarta.validation.Valid;
 import org.slf4j.MDC;
@@ -29,7 +35,10 @@ public class ApiController {
     private QueryService queryService;
 
     @Autowired
-    private WriteService writeService;
+    private GuardedWriteService writeService;
+
+    @Autowired
+    private WritePreviewManager previewService;
 
     @GetMapping("/dataCodes")
     public ApiResponse<List<DataCodeDTO>> listDataCodes() {
@@ -86,13 +95,60 @@ public class ApiController {
         params.put("token", "***");
         LogUtils.entrance(traceId, "/api/execute", "POST", params);
 
-        Object result = writeService.execute(
+        Object result;
+        try {
+            result = writeService.execute(
+                request.getPreviewId(),
                 request.getDataCode(),
                 request.getParams(),
                 token,
                 traceId);
+        } catch (WriteGuardException rejected) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("requiredAction", rejected.getErrorCode().code() == 46001 ? "DRY_RUN" : "RE_PREVIEW");
+            data.put("recoverable", true);
+            data.put("dataCode", request.getDataCode());
+            return ResponseEntity.status(rejected.getErrorCode().code() == 46001 ? 428 : 409)
+                    .body(new ApiResponse<>(rejected.getErrorCode().code(), rejected.getMessage(), data, traceId));
+        }
 
         LogUtils.returnLog(traceId, "/api/execute", "POST", result);
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/preview")
+    public ApiResponse<PreviewPlanDTO> preview(
+            @Valid @RequestBody QueryRequest request,
+            @RequestHeader("Authorization") String token) {
+        String traceId = MDC.get("traceId");
+        Map<String, Object> params = new HashMap<>();
+        params.put("dataCode", request.getDataCode());
+        params.put("params", request.getParams());
+        params.put("token", "***");
+        LogUtils.entrance(traceId, "/api/preview", "POST", params);
+
+        PreviewPlanDTO plan;
+        try { plan = previewService.create(request.getDataCode(), request.getParams(), token, traceId); }
+        catch (WriteGuardException rejected) {
+            return ApiResponse.error(rejected.getErrorCode().code(), rejected.getMessage(), traceId);
+        }
+
+        LogUtils.returnLog(traceId, "/api/preview", "POST", plan);
+        return ApiResponse.success(plan, traceId);
+    }
+
+    @PostMapping("/write-previews/{previewId}/decision")
+    public ApiResponse<Map<String, Object>> decidePreview(
+            @PathVariable String previewId,
+            @RequestBody Map<String, Object> request,
+            @RequestHeader("Authorization") String token) {
+        String traceId = MDC.get("traceId");
+        boolean confirm = "CONFIRM".equalsIgnoreCase(String.valueOf(request.get("decision")));
+        try {
+            WritePreview preview = previewService.decide(previewId, token, confirm);
+            return ApiResponse.success(Map.of("previewId", previewId, "status", preview.getStatus().name()), traceId);
+        } catch (WriteGuardException rejected) {
+            return ApiResponse.error(rejected.getErrorCode().code(), rejected.getMessage(), traceId);
+        }
     }
 }

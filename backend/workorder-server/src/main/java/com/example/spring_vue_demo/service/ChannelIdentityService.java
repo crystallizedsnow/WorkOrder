@@ -24,6 +24,7 @@ import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -138,6 +139,18 @@ public class ChannelIdentityService {
         Instant expiry = Instant.now().plus(properties.getChannelAccessTtl());
         String token = tokenUtil.generateChannelAccessToken(staff, binding.getId(), binding.getBindingVersion(), request.getChannelSessionId(), expiry);
         return new ChannelTokenResponse("Bearer", token, expiry, String.valueOf(staff.getId()));
+    }
+
+    public BatchResolveBindingResponse batchResolve(String serviceKey, BatchResolveBindingRequest request) {
+        requireService(serviceKey);
+        if (!PLATFORM.equalsIgnoreCase(request.getPlatform())) {
+            throw new IllegalArgumentException("不支持的渠道平台");
+        }
+        List<Long> userIds = request.getUserIds().stream().filter(Objects::nonNull).distinct().toList();
+        if (userIds.isEmpty()) {
+            return new BatchResolveBindingResponse(List.of());
+        }
+        return new BatchResolveBindingResponse(bindingMapper.resolveActiveBindings(PLATFORM, userIds));
     }
 
     private Staff requireUser(String authorization) { Staff staff = authTokenService.authenticatedStaff(authorization); if (staff == null) throw new IllegalArgumentException("用户认证失败"); return staff; }

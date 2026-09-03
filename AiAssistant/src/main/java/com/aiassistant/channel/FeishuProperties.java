@@ -17,4 +17,7 @@ public class FeishuProperties {
     private int maxRequestsPerMinute = 30;
     private int sendRetries = 2;
     private Duration retryDelay = Duration.ofMillis(300);
+    private int notificationBatchSize = 100;
+    private int notificationWorkerThreads = 4;
+    private int notificationQueueCapacity = 200;
 }

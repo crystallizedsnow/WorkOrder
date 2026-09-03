@@ -78,6 +78,9 @@ public class WorkOrderDetailVO {
     @Schema(description = "附件文件名")
     private String accessoryName;
 
+    @Schema(description = "当前登录用户可执行的操作；新增字段，不影响旧客户端")
+    private List<WorkOrderActionVO> allowedActions;
+
 
 
 }

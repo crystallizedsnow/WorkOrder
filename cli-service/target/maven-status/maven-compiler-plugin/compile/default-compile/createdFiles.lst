@@ -8,6 +8,7 @@ com\example\workorder\cli\service\TraceService.class
 com\example\workorder\cli\enums\WriteDataCodeEnum.class
 com\example\workorder\cli\feign\AuthFeignClient.class
 com\example\workorder\cli\config\FeignConfig.class
+com\example\workorder\cli\service\WritePreviewManager$1.class
 com\example\workorder\cli\dto\response\DataCodeDTO.class
 com\example\workorder\cli\service\WriteService.class
 com\example\workorder\cli\config\WebConfig.class

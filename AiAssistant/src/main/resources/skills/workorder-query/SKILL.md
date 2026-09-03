@@ -1,6 +1,19 @@
 ---
+key: workorder-query
 name: workorder-query
 description: 通过 workorder-cli 操作工单系统；所有操作先发现 dataCode、查询业务 Schema 与 CLI 实际参数契约，写操作还必须 dry-run 完整核验并等待 JSON 确认
+type: business
+version: 1.1.0
+enabled: true
+capabilities: ["work_order/query", "work_order/create", "work_order/update", "work_order/delete", "work_order/assign", "work_order/approve", "workflow/query", "workflow/manage"]
+positiveExamples: ["查询我正在处理的工单", "创建一张新的工单", "把这张工单分配给张三", "审批这张工单", "取消工单", "查询工单流程"]
+negativeExamples: ["写一首关于工单的诗", "预测下个月工单量", "介绍其他公司的工单产品", "帮我设计一个新的工单系统"]
+allowedTools: ["listCliCommands", "getCliCommandSchema", "executeCliCommand", "loadSkill"]
+riskLevel: WRITE
+requiresConfirmation: true
+requiredContext: []
+priority: 100
+conflictsWith: []
 ---
 
 # 工单系统 CLI 技能
@@ -20,9 +33,9 @@ description: 通过 workorder-cli 操作工单系统；所有操作先发现 dat
 3. `EXPECT`：建立期望参数清单。记录用户明确提供的每项业务约束、会话中需要复用的上一步结果、对应 Schema 字段和值。
 4. `CONTRACT`：读取所选 dataCode 的 CLI 实际参数契约。
 5. `PREVIEW`：写操作使用已确认的 CLI flag 执行 dry-run。
-6. `VERIFY`：将 dry-run 的“参数详情”与期望参数清单按业务语义和值逐项核对。
-7. `WAIT_CONFIRM`：仅在全部期望项验证通过后，原样展示预演并等待 JSON 确认。
-8. `EXECUTE`：确认后只删除已验证命令中的 `--dry-run`，其它字符不变，执行一次并停止。
+6. `VERIFY`：确认 CLI Service 已返回 `previewId`、规范化参数和有效期；CLI Service 是预演合法性的权威校验方。
+7. `WAIT_CONFIRM`：原样展示预演并等待系统确认；Agent 不得模拟确认。
+8. `EXECUTE`：确认由 Channel 层处理，正式命令使用服务端绑定的 `previewId`，执行一次并停止。
 
 读操作完成 `CONTRACT` 后直接执行，不需要 dry-run。
 
@@ -78,9 +91,9 @@ dry-run 返回成功、退出码为 0 或包含 `[dry-run]`，都不代表参数
 {"action":"confirm_execute","target":"last_dry_run","confirmed":true}
 ```
 
-仅当最近一次 dry-run 已通过完整 `VERIFY` 时有效。从会话历史找到该次 tool call 的完整命令，只删除 `--dry-run`，参数名、顺序和值全部保持不变，执行一次。执行后立即停止工具调用，只原样展示 CLI 返回 JSON。
+该消息由 Channel 层拦截，不会进入 ReAct。Channel 使用最近一次有效 `previewId` 完成确认和执行；Agent 不得从历史消息重建真实命令。
 
-如果最近一次 dry-run 缺少任一期望项，即使用户发送确认 JSON，也必须拒绝执行并返回 `CONTRACT` 恢复，不得把“不完整预演”变成真实写入。
+CLI Service 会校验预演用户、dataCode、参数摘要、确认状态和一次性消费状态。任何不一致都不会到达真实写服务。
 
 取消：
 
@@ -91,6 +104,16 @@ dry-run 返回成功、退出码为 0 或包含 `[dry-run]`，都不代表参数
 收到取消后不调用任何工具，直接回复：“已取消本次预演，不会执行真实写操作。”不要把它解释为取消一个已存在工单。
 
 用户修改或补充参数时，更新期望参数清单，重新执行 `CONTRACT → PREVIEW → VERIFY`。
+
+## CLI Service 写操作门禁
+
+- `46001 WRITE_PREVIEW_REQUIRED`：Agent 跳过 dry-run。必须立即改用 `--dry-run`，禁止原样重试真实写命令。
+- `46002/46003`：预演不存在或已过期，重新 dry-run。
+- `46004`：尚未获得用户确认，停止并等待 Channel 确认。
+- `46005/46008`：参数或 Schema 已变化，重新执行 `SCHEMA → CONTRACT → PREVIEW`。
+- `46006/46007`：预演已消费或取消，不得重放。
+
+这些门禁由 CLI Service 强制执行，不依赖 AgentLoop，也不能通过卸载 Skill 或直接调用工具绕过。
 
 ## 执行结果
 

@@ -9,6 +9,12 @@ import lombok.Data;
  */
 @Data
 public class WorkOrderTodoVO {
+    @Schema(description = "工单id")
+    private Long id;
+
+    @Schema(description = "工单编号")
+    private String code;
+
     @Schema(description = "标题")
     private String title;
 

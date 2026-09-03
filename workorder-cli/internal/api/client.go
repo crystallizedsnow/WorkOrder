@@ -67,8 +67,9 @@ type AuthTokenResponse struct {
 }
 
 type QueryRequest struct {
-	DataCode string                 `json:"dataCode"`
-	Params   map[string]interface{} `json:"params"`
+	PreviewId string                 `json:"previewId,omitempty"`
+	DataCode  string                 `json:"dataCode"`
+	Params    map[string]interface{} `json:"params"`
 }
 
 type BindingChallengeResponse struct {
@@ -272,12 +273,13 @@ func (c *Client) Query(ctx context.Context, dataCode string, params map[string]i
 	return c.doRequest(req)
 }
 
-func (c *Client) Execute(ctx context.Context, dataCode string, params map[string]interface{}, headers map[string]string) (*ApiResponse, error) {
+func (c *Client) Execute(ctx context.Context, previewId string, dataCode string, params map[string]interface{}, headers map[string]string) (*ApiResponse, error) {
 	url := fmt.Sprintf("%s/api/execute", c.cliServiceURL)
 
 	reqBody := QueryRequest{
-		DataCode: dataCode,
-		Params:   params,
+		PreviewId: previewId,
+		DataCode:  dataCode,
+		Params:    params,
 	}
 
 	data, err := json.Marshal(reqBody)
@@ -292,6 +294,32 @@ func (c *Client) Execute(ctx context.Context, dataCode string, params map[string
 
 	req.Header.Set("Content-Type", "application/json")
 
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	return c.doRequest(req)
+}
+
+func (c *Client) Preview(ctx context.Context, dataCode string, params map[string]interface{}, headers map[string]string) (*ApiResponse, error) {
+	url := fmt.Sprintf("%s/api/preview", c.cliServiceURL)
+
+	reqBody := QueryRequest{
+		DataCode: dataCode,
+		Params:   params,
+	}
+
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal preview request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create preview request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
@@ -330,13 +358,13 @@ func (c *Client) doRequest(req *http.Request) (*ApiResponse, error) {
 	}
 
 	var rawData map[string]interface{}
-	if err := json.Unmarshal(body, &rawData); err != nil {
+	if err := decodeJSON(body, &rawData); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if _, hasCode := rawData["code"]; hasCode {
 		var apiResp ApiResponse
-		if err := json.Unmarshal(body, &apiResp); err != nil {
+		if err := decodeJSON(body, &apiResp); err != nil {
 			return nil, fmt.Errorf("failed to parse response: %w", err)
 		}
 		if apiResp.Message == "" && apiResp.Msg != "" {
@@ -357,6 +385,12 @@ func (c *Client) doRequest(req *http.Request) (*ApiResponse, error) {
 		Data:    rawData,
 		TraceId: "",
 	}, nil
+}
+
+func decodeJSON(data []byte, target interface{}) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	return decoder.Decode(target)
 }
 
 func GetAuthHeaders() map[string]string {

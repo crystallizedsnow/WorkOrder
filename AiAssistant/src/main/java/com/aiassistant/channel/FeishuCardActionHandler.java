@@ -2,6 +2,7 @@ package com.aiassistant.channel;
 
 import com.aiassistant.channel.confirmation.WriteConfirmation;
 import com.aiassistant.channel.confirmation.WriteConfirmationService;
+import com.aiassistant.channel.confirmation.CliPreviewClient;
 import com.aiassistant.common.SessionContext;
 import com.aiassistant.tools.CliExecutorTools;
 import com.lark.oapi.event.cardcallback.P2CardActionTriggerHandler;
@@ -21,13 +22,15 @@ public class FeishuCardActionHandler extends P2CardActionTriggerHandler {
     private final FeishuIdentityClient identities;
     private final CliExecutorTools cli;
     private final FeishuChannelAdapter channel;
+    private final CliPreviewClient previews;
 
     public FeishuCardActionHandler(WriteConfirmationService confirmations, FeishuIdentityClient identities,
-                                   CliExecutorTools cli, FeishuChannelAdapter channel) {
+                                   CliExecutorTools cli, FeishuChannelAdapter channel, CliPreviewClient previews) {
         this.confirmations = confirmations;
         this.identities = identities;
         this.cli = cli;
         this.channel = channel;
+        this.previews = previews;
     }
 
     @Override
@@ -49,6 +52,11 @@ public class FeishuCardActionHandler extends P2CardActionTriggerHandler {
         if (!decision.accepted()) return response;
         WriteConfirmation confirmation = decision.confirmation();
         if (!confirm) {
+            try {
+                var token = identities.exchange(confirmation.getTenantId(), operator.getUnionId(), operator.getOpenId(),
+                        confirmation.getSessionId().toString());
+                previews.decide(confirmation.getPreviewId(), token.accessToken(), false);
+            } catch (Exception ignored) { }
             response.setCard(card(FeishuChannelAdapter.buildResultCard(confirmation, WriteConfirmation.Status.CANCELLED)));
             return response;
         }
@@ -58,6 +66,7 @@ public class FeishuCardActionHandler extends P2CardActionTriggerHandler {
         try {
             var token = identities.exchange(confirmation.getTenantId(), operator.getUnionId(), operator.getOpenId(),
                     confirmation.getSessionId().toString());
+            previews.decide(confirmation.getPreviewId(), token.accessToken(), true);
             SessionContext.setStaticToken(token.accessToken());
             result = cli.executeCliCommand(confirmation.getCommand());
             status = result.matches("(?s).*\\\"code\\\"\\s*:\\s*0.*")

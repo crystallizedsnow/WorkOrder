@@ -1,5 +1,7 @@
 package com.aiassistant.loader;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,7 +13,9 @@ import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -20,6 +24,8 @@ import java.util.regex.Pattern;
 @Component
 @Slf4j
 public class SkillLoader {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final ResourcePatternResolver resourcePatternResolver;
 
@@ -39,6 +45,7 @@ public class SkillLoader {
     }
 
     private void scanSkills() throws IOException {
+        skillMetadataMap.clear();
         Resource[] resources = resourcePatternResolver.getResources(skillPathPattern);
         
         if (resources == null || resources.length == 0) {
@@ -102,20 +109,53 @@ public class SkillLoader {
                 if (colonIndex > 0) {
                     String key = line.substring(0, colonIndex).trim();
                     String value = line.substring(colonIndex + 1).trim();
-                    value = value.replace("\"", "").replace("'", "");
+                    String scalarValue = value.replace("\"", "").replace("'", "");
                     
                     switch (key.toLowerCase()) {
+                        case "key":
+                            metadata.setKey(scalarValue);
+                            break;
                         case "name":
-                            metadata.setName(value);
+                            metadata.setName(scalarValue);
                             break;
                         case "description":
-                            metadata.setDescription(value);
+                            metadata.setDescription(scalarValue);
                             break;
                         case "type":
-                            metadata.setType(value);
+                            metadata.setType(scalarValue);
                             break;
                         case "version":
-                            metadata.setVersion(value);
+                            metadata.setVersion(scalarValue);
+                            break;
+                        case "enabled":
+                            metadata.setEnabled(Boolean.parseBoolean(scalarValue));
+                            break;
+                        case "capabilities":
+                            metadata.setCapabilities(parseList(value));
+                            break;
+                        case "positiveexamples":
+                            metadata.setPositiveExamples(parseList(value));
+                            break;
+                        case "negativeexamples":
+                            metadata.setNegativeExamples(parseList(value));
+                            break;
+                        case "allowedtools":
+                            metadata.setAllowedTools(parseList(value));
+                            break;
+                        case "risklevel":
+                            metadata.setRiskLevel(scalarValue.toUpperCase());
+                            break;
+                        case "requiresconfirmation":
+                            metadata.setRequiresConfirmation(Boolean.parseBoolean(scalarValue));
+                            break;
+                        case "requiredcontext":
+                            metadata.setRequiredContext(parseList(value));
+                            break;
+                        case "priority":
+                            metadata.setPriority(parseInt(scalarValue, 0));
+                            break;
+                        case "conflictswith":
+                            metadata.setConflictsWith(parseList(value));
                             break;
                     }
                 }
@@ -125,8 +165,48 @@ public class SkillLoader {
         return metadata;
     }
 
+    private List<String> parseList(String value) {
+        if (value == null || value.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            JsonNode node = MAPPER.readTree(value);
+            if (node.isArray()) {
+                List<String> result = new ArrayList<>();
+                node.forEach(item -> {
+                    if (item.isTextual() && !item.asText().isBlank()) {
+                        result.add(item.asText().trim());
+                    }
+                });
+                return result;
+            }
+        } catch (Exception ignored) {
+            // 兼容逗号分隔的简易 frontmatter 写法。
+        }
+        List<String> result = new ArrayList<>();
+        for (String item : value.split(",")) {
+            String normalized = item.trim().replaceAll("^[\\[\\]\"']+|[\\[\\]\"']+$", "");
+            if (!normalized.isBlank()) {
+                result.add(normalized);
+            }
+        }
+        return result;
+    }
+
+    private int parseInt(String value, int fallback) {
+        try {
+            return Integer.parseInt(value);
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
     public List<SkillMetadata> listSkills() {
-        return new ArrayList<>(skillMetadataMap.values());
+        return Collections.unmodifiableList(new ArrayList<>(skillMetadataMap.values()));
+    }
+
+    public Map<String, SkillMetadata> getSkillMetadataMap() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(skillMetadataMap));
     }
 
     public String getSkillIndex() {
@@ -154,10 +234,21 @@ public class SkillLoader {
 
     @Data
     public static class SkillMetadata {
+        private String key;
         private String name;
         private String description;
         private String type;
         private String version;
         private String filePath;
+        private boolean enabled = true;
+        private List<String> capabilities = new ArrayList<>();
+        private List<String> positiveExamples = new ArrayList<>();
+        private List<String> negativeExamples = new ArrayList<>();
+        private List<String> allowedTools = new ArrayList<>();
+        private String riskLevel = "READ";
+        private boolean requiresConfirmation;
+        private List<String> requiredContext = new ArrayList<>();
+        private int priority;
+        private List<String> conflictsWith = new ArrayList<>();
     }
 }

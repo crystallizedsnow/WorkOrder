@@ -19,4 +19,10 @@ public class AuthProperties {
     private Duration channelAccessTtl = Duration.ofMinutes(5);
     private int bindingMaxAttempts = 5;
     private String channelServiceKey;
+    /** Browser refresh cookie settings. Secure must be enabled outside local HTTP development. */
+    private String webCookieName = "workorder_refresh";
+    private boolean webCookieSecure = false;
+    private String webCookieSameSite = "Lax";
+    /** A disabled, non-login staff account used as the sender of scheduled system messages. */
+    private Long systemSenderId;
 }

@@ -7,6 +7,8 @@ import java.util.Map;
 @Data
 public class QueryRequest {
 
+    private String previewId;
+
     @NotBlank(message = "dataCode must not be blank")
     private String dataCode;
 

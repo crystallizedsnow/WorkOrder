@@ -13,6 +13,18 @@ server:
     port: 8080
 
 workorder:
+    overdue:
+        enabled: true
+        scan-delay-ms: 30000
+        batch-size: 200
+        max-batches-per-run: 10
+    notification:
+        ai-assistant-url: http://localhost:8081
+        batch-size: 100
+        max-attempts: 3
+        initial-retry-delay: 1m
+        dispatch-delay-ms: 5000
+        sending-lease: 2m
     auth:
         # 仅用于本地开发。部署到共享或生产环境前应改用密钥管理或环境变量注入。
         jwt-secret: local-dev-workorder-jwt-secret-2026-change-before-production
@@ -20,13 +32,22 @@ workorder:
         audience: workorder-api
         access-ttl: 15m
         refresh-ttl: 30d
+        # 本地仅使用 HTTP。部署 HTTPS 后必须设置为 true。
+        web-cookie-name: workorder_refresh
+        web-cookie-secure: false
+        web-cookie-same-site: Lax
         binding-code-ttl: 5m
         channel-access-ttl: 5m
         binding-max-attempts: 5
         # 仅用于本地开发，必须与 AiAssistant 的配置一致。
         channel-service-key: local-dev-aiassistant-channel-service-key-2026
+        # 延期提醒专用系统账号；由 work_order_delayed_notification_migration.sql 创建。
+        system-sender-id: 900000000000000001
 
 spring:
+    rabbitmq:
+        publisher-confirm-type: correlated
+        publisher-returns: true
     datasource:
         driver-class-name: com.mysql.cj.jdbc.Driver
         url: jdbc:mysql://localhost/wos?useUnicode=true&characterEncoding=UTF-8

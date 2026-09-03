@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.example.workorder.api.dto.AuthTokenResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -23,16 +24,26 @@ public class LoginServiceImpl extends ServiceImpl<StaffMapper, Staff> implements
     @Override
     @Transactional
     public Result login(LoginParam loginParam) {
+        try {
+            return Result.success(loginToken(loginParam));
+        } catch (IllegalArgumentException exception) {
+            return Result.error(exception.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public AuthTokenResponse loginToken(LoginParam loginParam) {
         Staff staff = staffMapper.selectOne(new LambdaQueryWrapper<Staff>().eq(Staff::getPhone, loginParam.getPhone()));
         if (staff == null || staff.getStatus() == null || staff.getStatus() != 0 || !matches(loginParam.getPassword(), staff.getPassword())) {
-            return Result.error("账号或者密码错误");
+            throw new IllegalArgumentException("账号或者密码错误");
         }
         if (!isHash(staff.getPassword())) {
             staff.setPassword(passwordEncoder.encode(loginParam.getPassword()));
             if (staff.getAuthVersion() == null) staff.setAuthVersion(0);
             staffMapper.updateById(staff);
         }
-        return Result.success(authTokenService.issue(staff));
+        return authTokenService.issue(staff);
     }
 
     private boolean matches(String raw, String encoded) {

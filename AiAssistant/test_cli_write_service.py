@@ -103,7 +103,7 @@ def check_dry_run_output(result):
     if result is None:
         return False
     # 检查dry-run标记（SKILL.md中第三步返回string类型的预演结果）
-    has_marker = "[dry-run]" in result or "操作类型" in result or "预演" in result
+    has_marker = "dry-run" in result.lower() or "操作类型" in result or "预演" in result or "预览" in result
     has_operation = "操作类型" in result or "风险等级" in result
     has_params = "参数详情" in result or "预期影响" in result
     return has_marker or (has_operation and has_params)
@@ -681,12 +681,12 @@ def main():
     results = {}
 
     # ---- 场景1: 用户确认通过执行 ----
-    # print("\n" + "*"*70)
-    # print("* 执行场景1: 用户确认通过执行")
-    # print("*"*70)
-    # r1 = test_scenario_1_user_confirm_execute()
-    # results["场景1-确认执行"] = r1
-    # time.sleep(3)
+    print("\n" + "*"*70)
+    print("* 执行场景1: 用户确认通过执行")
+    print("*"*70)
+    r1 = test_scenario_1_user_confirm_execute()
+    results["场景1-确认执行"] = r1
+    time.sleep(3)
 
     # # ---- 场景2: 用户取消执行 ----
     # print("\n" + "*"*70)
@@ -697,12 +697,12 @@ def main():
     # time.sleep(3)
 
     # ---- 场景3: 用户修改参数后执行 ----
-    print("\n" + "*"*70)
-    print("* 执行场景3: 用户修改参数后执行")
-    print("*"*70)
-    r3 = test_scenario_3_modify_params()
-    results["场景3-修改参数"] = r3
-    time.sleep(3)
+    # print("\n" + "*"*70)
+    # print("* 执行场景3: 用户修改参数后执行")
+    # print("*"*70)
+    # r3 = test_scenario_3_modify_params()
+    # results["场景3-修改参数"] = r3
+    # time.sleep(3)
 
     # ---- 场景4: 用户修改命令类型后执行 ----
     # print("\n" + "*"*70)

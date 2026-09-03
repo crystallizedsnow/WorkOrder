@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.time.OffsetDateTime;
 
 @Component
 @ConditionalOnProperty(name = "workorder.channel.feishu.enabled", havingValue = "true")
@@ -114,6 +115,42 @@ public class FeishuChannelAdapter implements ChannelAdapter {
         } catch (Exception e) {
             throw new IllegalStateException("Feishu card failed", e);
         }
+    }
+
+    public String sendCardToOpenId(String openId, Map<String, Object> card) {
+        try {
+            String content = mapper.writeValueAsString(card);
+            var body = CreateMessageReqBody.newBuilder().receiveId(openId).msgType("interactive").content(content).build();
+            var request = CreateMessageReq.newBuilder().receiveIdType("open_id").createMessageReqBody(body).build();
+            var response = client.im().v1().message().create(request);
+            if (!response.success()) {
+                throw FeishuDeliveryException.from(response.getCode(), response.getMsg());
+            }
+            return response.getData() == null ? null : response.getData().getMessageId();
+        } catch (FeishuDeliveryException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new FeishuDeliveryException(true, "NETWORK_ERROR", "Feishu proactive send failed", ex);
+        }
+    }
+
+    public static Map<String, Object> buildDelayedWorkOrderCard(String code, String title, OffsetDateTime deadlineTime) {
+        String safeCode = truncate(code, 64);
+        String safeTitle = truncate(title, 200);
+        String deadline = deadlineTime == null ? "未设置" : deadlineTime.toString();
+        String content = "**工单编号：** " + safeCode + "\n"
+                + "**工单标题：** " + safeTitle + "\n"
+                + "**原截止时间：** " + deadline + "\n"
+                + "**当前状态：** 已超时\n\n请尽快处理。";
+        return Map.of(
+                "schema", "2.0",
+                "header", Map.of("title", Map.of("tag", "plain_text", "content", "⏰ 工单已延期"), "template", "red"),
+                "body", Map.of("elements", List.of(Map.of("tag", "markdown", "content", content))));
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null || value.isBlank()) return "-";
+        return value.length() <= max ? value : value.substring(0, max) + "...";
     }
 
     private static String safe(String text) {

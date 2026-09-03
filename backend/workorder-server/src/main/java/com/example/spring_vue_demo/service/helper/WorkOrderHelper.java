@@ -479,11 +479,18 @@ public class WorkOrderHelper {
         }
     }
 
-    public List<Long> getHandleUserIds(Long orderId) {
-        LambdaQueryWrapper<HandleUserInfo> handleUserInfoWrapper = HandleUserInfoQuery.getHandleTypeWrapper(orderId, WorkOrderStatusEnum.DELAYED.getValue());
+    public List<Long> getUnfinishedHandlerUserIds(Long orderId) {
+        LambdaQueryWrapper<HandleUserInfo> handleUserInfoWrapper = new LambdaQueryWrapper<HandleUserInfo>()
+                .eq(HandleUserInfo::getOrderId, orderId)
+                .eq(HandleUserInfo::getHandleType, HandleUserInfoHandleTypeEnum.HANDLE.getValue())
+                .eq(HandleUserInfo::getFinished, Boolean.FALSE)
+                .eq(HandleUserInfo::getDeleted, 0);
         List<HandleUserInfo> handleUserInfos = handleUserInfoMapper.selectList(handleUserInfoWrapper);
-        List<Long> handleOrderIds = handleUserInfos.stream().map(HandleUserInfo::getOrderId).toList();
-        return handleOrderIds;
+        return handleUserInfos.stream()
+                .map(HandleUserInfo::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
     }
 
     public List<Long> getReceiverIds(HandleTypeEnum handleType, Long orderId, Long assignedId) {

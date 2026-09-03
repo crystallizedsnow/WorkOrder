@@ -6,7 +6,30 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $cliPath = Join-Path $PSScriptRoot "workorder-cli.exe"
-$token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiLlvKDkuIkiLCJpZCI6MiwibmFtZSI6IuW8oOS4iSIsImNvbXBhbnkiOiLmgLvlhazlj7giLCJkZXBhcnRtZW50Ijoi5oC75Yqh6YOoIiwicG9zaXRpb24iOiLmgLvnu4_nkIYiLCJzdGF0dXMiOjAsInBob25lIjoiMTM4MTIzNDU2NzgiLCJlbWFpbCI6InpoYW5nc2FuQGV4YW1wbGUuY29tIiwicm9sZSI6InVzZXIiLCJpYXQiOjE3ODUyNTQ4NTksImV4cCI6MTc4NTM0MTI1OX0.qgrhkJBop6RByhfxZSEyyzkgTwco7rX_0GHAe2JH6Ck"
+
+function Get-TestAccessToken {
+    if (-not [string]::IsNullOrWhiteSpace($env:WORKORDER_TEST_ACCESS_TOKEN)) {
+        return $env:WORKORDER_TEST_ACCESS_TOKEN -replace '^Bearer\s+', ''
+    }
+
+    $loginBody = @{
+        phone = if ($env:WORKORDER_TEST_PHONE) { $env:WORKORDER_TEST_PHONE } else { "13812345678" }
+        password = if ($env:WORKORDER_TEST_PASSWORD) { $env:WORKORDER_TEST_PASSWORD } else { "newPassword123!" }
+    } | ConvertTo-Json
+
+    try {
+        $login = Invoke-RestMethod -Method Post -Uri "http://localhost:8080/user/login" `
+            -ContentType "application/json" -Body $loginBody -TimeoutSec 15
+        if ($login.code -ne 1 -or [string]::IsNullOrWhiteSpace($login.data.accessToken)) {
+            throw "登录响应未包含 accessToken"
+        }
+        return $login.data.accessToken
+    } catch {
+        throw "无法获取 dry-run 测试 Token: $($_.Exception.Message)"
+    }
+}
+
+$token = Get-TestAccessToken
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Dry-Run Mechanism Test Script" -ForegroundColor Cyan

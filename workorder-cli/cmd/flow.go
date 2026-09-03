@@ -129,7 +129,7 @@ func handleFlowCreate(args []string) {
 	ctx := context.Background()
 	headers := api.GetAuthHeaders()
 
-	resp, err := client.Execute(ctx, "flow_create", params, headers)
+	resp, err := client.Execute(ctx, getPreviewID(), "flow_create", params, headers)
 	if err != nil {
 		output.PrintError(1, fmt.Sprintf("创建流程失败: %v", err))
 		return
@@ -185,7 +185,7 @@ func handleFlowEdit(args []string) {
 	ctx := context.Background()
 	headers := api.GetAuthHeaders()
 
-	resp, err := client.Execute(ctx, "flow_edit", params, headers)
+	resp, err := client.Execute(ctx, getPreviewID(), "flow_edit", params, headers)
 	if err != nil {
 		output.PrintError(1, fmt.Sprintf("编辑流程失败: %v", err))
 		return
@@ -220,7 +220,7 @@ func handleFlowDelete(args []string) {
 	ctx := context.Background()
 	headers := api.GetAuthHeaders()
 
-	resp, err := client.Execute(ctx, "flow_delete", params, headers)
+	resp, err := client.Execute(ctx, getPreviewID(), "flow_delete", params, headers)
 	if err != nil {
 		output.PrintError(1, fmt.Sprintf("删除流程失败: %v", err))
 		return

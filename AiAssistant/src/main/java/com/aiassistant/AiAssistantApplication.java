@@ -13,4 +13,3 @@ public class AiAssistantApplication {
     }
 
 }
-// todo:FAQ知识库，通道
