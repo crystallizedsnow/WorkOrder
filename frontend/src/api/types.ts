@@ -135,7 +135,7 @@ export interface WorkOrderCreateParams {
   title: string
   content: string
   priorityLevel: number
-  flowId: number
+  flowId: string
   deadlineTime: number
 }
 

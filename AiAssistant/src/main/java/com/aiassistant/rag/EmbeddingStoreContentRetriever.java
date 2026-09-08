@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** BM25 + KNN 双路召回，通过 RRF 融合、稳定去重并优先可信来源。 */
 @Slf4j
@@ -42,13 +43,19 @@ public class EmbeddingStoreContentRetriever implements ContentRetriever {
 
     @Override
     public List<Document> retrieve(String query) {
+        return retrieve(query, null);
+    }
+
+    @Override
+    public List<Document> retrieve(String query, Set<String> revisionIds) {
         if (query == null || query.isBlank() || embeddingModel == null || !embeddingModel.isAvailable()
                 || vectorStore == null || !vectorStore.isAvailable()) return Collections.emptyList();
+        if (revisionIds != null && revisionIds.isEmpty()) return Collections.emptyList();
         Timer.Sample sample = meterRegistry == null ? null : Timer.start(meterRegistry);
         try {
-            List<Document> lexical = vectorStore.searchLexical(query, candidateResults);
+            List<Document> lexical = vectorStore.searchLexical(query, candidateResults, revisionIds);
             float[] vector = embeddingModel.embed(query);
-            List<Document> semantic = vectorStore.search(vector, candidateResults, minScore);
+            List<Document> semantic = vectorStore.search(vector, candidateResults, minScore, revisionIds);
             List<Document> result = reciprocalRankFusion(lexical, semantic, maxResults);
             if (meterRegistry != null) meterRegistry.counter("rag.retrieval.total", "result",
                     result.isEmpty() ? "empty" : "hit").increment();

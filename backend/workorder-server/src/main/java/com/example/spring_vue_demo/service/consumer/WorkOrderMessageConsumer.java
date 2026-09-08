@@ -32,6 +32,7 @@ public class WorkOrderMessageConsumer {
         log.info("Received message: {}", messageDto);
         // 构建消息
         List<Message> messages = workOrderHelper.buildMessages(
+                messageDto.getWorkOrderId(),
                 Objects.requireNonNull(WorkOrderStatusEnum.getByValue(messageDto.getStatus())),
                 messageDto.getWorkOrderCode(),
                 messageDto.getReceiverIds(),

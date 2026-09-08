@@ -10,6 +10,12 @@ import lombok.Data;
 @Data
 public class MessageVO {
 
+    @Schema(description = "消息id")
+    private Long id;
+
+    @Schema(description = "关联工单id")
+    private Long workOrderId;
+
     @Schema(description = "消息内容")
     private String content;
 

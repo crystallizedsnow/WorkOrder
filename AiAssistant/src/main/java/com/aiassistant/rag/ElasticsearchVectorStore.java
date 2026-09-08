@@ -2,6 +2,7 @@ package com.aiassistant.rag;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.Refresh;
+import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.mapping.DenseVectorProperty;
 import co.elastic.clients.elasticsearch._types.mapping.Property;
 import co.elastic.clients.elasticsearch._types.mapping.TypeMapping;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Elasticsearch 向量存储：稳定 ID、Bulk 写入和版本化 Alias 原子发布。 */
 @Slf4j
@@ -126,6 +128,9 @@ public class ElasticsearchVectorStore implements VectorStore {
                         .properties("sourceVersion", Property.of(p -> p.keyword(k -> k)))
                         .properties("headingPath", Property.of(p -> p.text(t -> t)))
                         .properties("trustLevel", Property.of(p -> p.keyword(k -> k)))
+                        .properties("documentId", Property.of(p -> p.keyword(k -> k)))
+                        .properties("revisionId", Property.of(p -> p.keyword(k -> k)))
+                        .properties("format", Property.of(p -> p.keyword(k -> k)))
                         .properties("buildVersion", Property.of(p -> p.keyword(k -> k))))));
         client.indices().create(request);
     }
@@ -142,7 +147,31 @@ public class ElasticsearchVectorStore implements VectorStore {
         body.put("headingPath", value(document.getHeadingPath()));
         body.put("trustLevel", document.getTrustLevel().name());
         body.put("buildVersion", buildVersion);
+        body.put("documentId", value(document.getDocumentId()));
+        body.put("revisionId", value(document.getRevisionId()));
+        body.put("format", value(document.getFormat()));
         return body;
+    }
+
+    @Override
+    public void addRevision(List<float[]> vectors, List<Document> documents) {
+        requireValidBatch(vectors, documents);
+        if (!hasPublishedIndex()) throw new IllegalStateException("RAG Alias 尚未发布，不能执行增量更新");
+        try {
+            BulkResponse response = client.bulk(b -> {
+                b.index(aliasName).refresh(Refresh.WaitFor);
+                for (int i = 0; i < documents.size(); i++) {
+                    Document document = documents.get(i);
+                    float[] vector = vectors.get(i);
+                    b.operations(op -> op.index(idx -> idx.index(aliasName).id(document.getId())
+                            .document(toSource(vector, document, "incremental"))));
+                }
+                return b;
+            });
+            if (response.errors()) throw new IllegalStateException("增量知识片段写入存在失败项");
+        } catch (Exception e) {
+            throw new IllegalStateException("增量知识版本写入失败", e);
+        }
     }
 
     private void switchAlias(String newIndex) throws Exception {
@@ -159,14 +188,26 @@ public class ElasticsearchVectorStore implements VectorStore {
 
     @Override
     public List<Document> search(float[] queryVector, int maxResults, double minScore) {
+        return search(queryVector, maxResults, minScore, null);
+    }
+
+    @Override
+    public List<Document> search(float[] queryVector, int maxResults, double minScore, Set<String> revisionIds) {
         List<Document> results = new ArrayList<>();
+        if (revisionIds != null && revisionIds.isEmpty()) return results;
         if (!available || queryVector == null || queryVector.length != dimension) return results;
         try {
             if (!client.indices().existsAlias(e -> e.name(aliasName)).value()) return results;
             List<Float> vector = new ArrayList<>(queryVector.length);
             for (float value : queryVector) vector.add(value);
-            SearchResponse<Map> response = client.search(s -> s.index(aliasName).knn(k -> k.field("embedding")
-                    .queryVector(vector).k((long) maxResults).numCandidates((long) Math.max(maxResults * 10, 50))), Map.class);
+            List<FieldValue> revisions = fieldValues(revisionIds);
+            SearchResponse<Map> response = client.search(s -> s.index(aliasName).knn(k -> {
+                k.field("embedding").queryVector(vector).k((long) maxResults)
+                        .numCandidates((long) Math.max(maxResults * 10, 50));
+                if (!revisions.isEmpty()) k.filter(f -> f.terms(t -> t.field("revisionId")
+                        .terms(v -> v.value(revisions))));
+                return k;
+            }), Map.class);
             for (Hit<Map> hit : response.hits().hits()) {
                 if (hit.source() == null || hit.score() == null || hit.score() < minScore) continue;
                 Map source = hit.source();
@@ -184,12 +225,24 @@ public class ElasticsearchVectorStore implements VectorStore {
 
     @Override
     public List<Document> searchLexical(String query, int maxResults) {
+        return searchLexical(query, maxResults, null);
+    }
+
+    @Override
+    public List<Document> searchLexical(String query, int maxResults, Set<String> revisionIds) {
         List<Document> results = new ArrayList<>();
+        if (revisionIds != null && revisionIds.isEmpty()) return results;
         if (!available || query == null || query.isBlank()) return results;
         try {
             if (!client.indices().existsAlias(e -> e.name(aliasName)).value()) return results;
-            SearchResponse<Map> response = client.search(s -> s.index(aliasName).size(maxResults)
-                    .query(q -> q.multiMatch(m -> m.query(query).fields("text^2", "headingPath^3", "sourceName"))), Map.class);
+            List<FieldValue> revisions = fieldValues(revisionIds);
+            SearchResponse<Map> response = client.search(s -> s.index(aliasName).size(maxResults).query(q -> {
+                if (revisions.isEmpty()) return q.multiMatch(m -> m.query(query)
+                        .fields("text^2", "headingPath^3", "sourceName"));
+                return q.bool(b -> b.must(must -> must.multiMatch(m -> m.query(query)
+                                .fields("text^2", "headingPath^3", "sourceName")))
+                        .filter(f -> f.terms(t -> t.field("revisionId").terms(v -> v.value(revisions)))));
+            }), Map.class);
             for (Hit<Map> hit : response.hits().hits()) {
                 if (hit.source() == null) continue;
                 Map source = hit.source();
@@ -282,7 +335,14 @@ public class ElasticsearchVectorStore implements VectorStore {
     private Document fromHit(Hit<Map> hit, Map source, TrustLevel trust) {
         return Document.builder().id(hit.id()).text(string(source.get("text"))).source(string(source.get("source")))
                 .sourceName(string(source.get("sourceName"))).sourceVersion(string(source.get("sourceVersion")))
+                .documentId(string(source.get("documentId"))).revisionId(string(source.get("revisionId")))
+                .format(string(source.get("format")))
                 .headingPath(string(source.get("headingPath"))).trustLevel(trust).build();
+    }
+
+    private List<FieldValue> fieldValues(Set<String> values) {
+        if (values == null || values.isEmpty()) return List.of();
+        return values.stream().filter(value -> value != null && !value.isBlank()).map(FieldValue::of).toList();
     }
 
     private String string(Object value) { return value == null ? "" : value.toString(); }

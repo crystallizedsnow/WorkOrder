@@ -15,6 +15,9 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class WorkOrderMessageDto {
+    @Schema(description = "关联工单id")
+    private Long workOrderId;
+
     @Schema(description = "状态，100未审核，200审核中，270审核失败，300未派单，400处理中，410已超时，500已完成，600已确认完成，670确认失败，700已取消")
     private Integer status;
 

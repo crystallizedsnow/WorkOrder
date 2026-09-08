@@ -20,6 +20,7 @@ import com.aiassistant.rag.CitationService;
 import com.aiassistant.rag.QueryContextualizer;
 import com.aiassistant.rag.RagStateService;
 import com.aiassistant.rag.RagStatus;
+import com.aiassistant.rag.ActiveRevisionRegistry;
 import com.aiassistant.recovery.ErrorClassifier;
 import com.aiassistant.recovery.ErrorType;
 import com.aiassistant.recovery.FallbackService;
@@ -27,6 +28,7 @@ import com.aiassistant.recovery.RetryService;
 import com.aiassistant.todo.TodoManager;
 import com.aiassistant.channel.model.AgentRequest;
 import com.aiassistant.channel.model.ChannelType;
+import com.aiassistant.intent.RagMode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -82,6 +84,9 @@ public class AgentLoop {
     private RagStateService ragStateService;
 
     @Autowired
+    private ActiveRevisionRegistry activeRevisionRegistry;
+
+    @Autowired
     private SessionMemoryService sessionMemoryService;
 
     @Autowired
@@ -114,6 +119,10 @@ public class AgentLoop {
     }
 
     public Flux<String> run(AgentRequest request) {
+        return run(request, RagMode.REQUIRED);
+    }
+
+    public Flux<String> run(AgentRequest request, RagMode ragMode) {
         return Flux.create(sink -> {
             Long sessionId = request.sessionId(); String query = request.query(); String token = request.accessToken();
             try {
@@ -122,7 +131,7 @@ public class AgentLoop {
                 hookRegistry.executeHooks(HookType.SESSION_START,
                         HookContext.builder().sessionId(sessionId).build());
 
-                String result = executeReActLoop(request);
+                String result = executeReActLoop(request, ragMode == null ? RagMode.NEVER : ragMode);
                 sink.next(result);
                 sink.complete();
             } catch (Exception e) {
@@ -136,12 +145,15 @@ public class AgentLoop {
         });
     }
 
-    private String executeReActLoop(AgentRequest request) {
+    private String executeReActLoop(AgentRequest request, RagMode ragMode) {
         Long sessionId = request.sessionId();
         String initialQuery = request.query();
-        String retrievalQuery = queryContextualizer.contextualize(initialQuery,
-                sessionMemoryService.recentUserMessages(request, 2));
-        RagContext ragContext = retrieveKnowledge(retrievalQuery);
+        RagContext ragContext = RagContext.empty();
+        if (ragMode != RagMode.NEVER) {
+            String retrievalQuery = queryContextualizer.contextualize(initialQuery,
+                    sessionMemoryService.recentUserMessages(request, 2));
+            ragContext = retrieveKnowledge(retrievalQuery);
+        }
         List<ToolDefinition> tools = toolDispatcher.getToolDefinitions();
         MemoryContext memoryContext = sessionMemoryService.prepare(request, dynamicPromptGenerator.generate(),
                 ragContext.promptContext(), initialQuery, tools);
@@ -435,7 +447,9 @@ public class AgentLoop {
 
     private RagContext retrieveKnowledge(String query) {
         try {
-            List<Document> documents = contentRetriever.retrieve(query);
+            var active = activeRevisionRegistry.snapshot().revisionIds();
+            List<Document> documents = active.isEmpty() ? contentRetriever.retrieve(query)
+                    : contentRetriever.retrieve(query, active);
             if (documents == null || documents.isEmpty()) {
                 RagStatus status = ragStateService.snapshot().status();
                 if (status == RagStatus.FAILED || status == RagStatus.INITIALIZING || status == RagStatus.BUILDING) {

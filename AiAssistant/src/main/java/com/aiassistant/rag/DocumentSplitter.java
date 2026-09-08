@@ -99,6 +99,7 @@ public class DocumentSplitter {
                 + value(heading) + "\n" + ordinal + "\n" + text;
         Document document = Document.builder().id(sha256(identity)).text(text).source(source.getSource())
                 .sourceName(source.getSourceName()).sourceVersion(source.getSourceVersion())
+                .documentId(source.getDocumentId()).revisionId(source.getRevisionId()).format(source.getFormat())
                 .headingPath(heading).trustLevel(source.getTrustLevel())
                 .metadata(new java.util.HashMap<>(source.getMetadata())).build();
         document.getMetadata().put("ordinal", ordinal);

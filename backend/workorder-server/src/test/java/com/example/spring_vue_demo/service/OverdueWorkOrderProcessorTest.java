@@ -45,7 +45,7 @@ class OverdueWorkOrderProcessorTest {
 
         assertThat(processed).isTrue();
         verify(delayedNotificationDeliveryService).enqueue(order, List.of(2L, 3L));
-        verify(workOrderMessageProducer).sendWorkOrderMessages(410, "WO9", List.of(2L, 3L), 99L, true);
+        verify(workOrderMessageProducer).sendWorkOrderMessages(9L, 410, "WO9", List.of(2L, 3L), 99L, true);
     }
 
     @Test
@@ -56,6 +56,6 @@ class OverdueWorkOrderProcessorTest {
 
         assertThat(processed).isFalse();
         verify(delayedNotificationDeliveryService, never()).enqueue(any(), any());
-        verify(workOrderMessageProducer, never()).sendWorkOrderMessages(any(), any(), any(), any(), anyBoolean());
+        verify(workOrderMessageProducer, never()).sendWorkOrderMessages(any(), any(), any(), any(), any(), anyBoolean());
     }
 }

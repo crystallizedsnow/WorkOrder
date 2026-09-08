@@ -240,6 +240,7 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
         // 发送信息
         List<Long> receiverIds = workOrderHelper.getReceiverIds(handleType, workOrder.getId(), param.getAssignedUserId());
         workOrderMessageProducer.sendWorkOrderMessages(
+                workOrder.getId(),
                 workOrder.getStatus(),
                 workOrder.getCode(),
                 receiverIds,
@@ -317,6 +318,7 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
 
         // 发送信息
         workOrderMessageProducer.sendWorkOrderMessages(
+                workOrder.getId(),
                 workOrder.getStatus(),
                 workOrder.getCode(),
                 List.of(staff.getId()),
@@ -349,6 +351,7 @@ public class WorkOrderServiceImpl extends ServiceImpl<WorkOrderMapper, WorkOrder
         }
         // 发送信息
         workOrderMessageProducer.sendWorkOrderMessages(
+                workOrder.getId(),
                 AUDITING.getValue(),
                 workOrder.getCode(),
                 List.of(auditId),

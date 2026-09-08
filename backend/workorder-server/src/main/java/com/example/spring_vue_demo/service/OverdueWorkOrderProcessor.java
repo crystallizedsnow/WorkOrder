@@ -61,7 +61,7 @@ public class OverdueWorkOrderProcessor {
         Runnable publishMessage = () -> {
             try {
                 workOrderMessageProducer.sendWorkOrderMessages(
-                        WorkOrderStatusEnum.DELAYED.getValue(), order.getCode(), receiverIds, systemSenderId, true);
+                        order.getId(), WorkOrderStatusEnum.DELAYED.getValue(), order.getCode(), receiverIds, systemSenderId, true);
             } catch (RuntimeException error) {
                 log.error("Failed to publish overdue message after commit orderId={}, code={}",
                         orderId, order.getCode(), error);

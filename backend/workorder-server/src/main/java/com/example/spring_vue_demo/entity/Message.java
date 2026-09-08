@@ -28,6 +28,9 @@ public class Message {
     @Schema(description = "发送人id")
     private Long senderId;
 
+    @Schema(description = "关联工单id")
+    private Long workOrderId;
+
     @Schema(description = "消息类型（对应工单状态）")
     private Integer type;
 

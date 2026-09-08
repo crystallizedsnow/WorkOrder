@@ -33,6 +33,9 @@ memory_merged_*.json
 # Local ML models (ONNX embedding model, etc.)
 models/
 
+# Runtime knowledge revision originals and catalog
+knowledge-storage/
+
 # Token/auth files
 .auth_token
 TOKEN_FILE

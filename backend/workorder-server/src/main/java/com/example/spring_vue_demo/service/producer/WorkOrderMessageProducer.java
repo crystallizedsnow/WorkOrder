@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -23,9 +24,10 @@ public class WorkOrderMessageProducer {
     @Autowired
     private RabbitTemplate rabbitTemplate;
 
-    public void sendWorkOrderMessages(Integer status, String workOrderCode,
+    public void sendWorkOrderMessages(Long workOrderId, Integer status, String workOrderCode,
                                       List<Long> receiverIds, Long senderId, boolean finished) {
         WorkOrderMessageDto messageDto = new WorkOrderMessageDto();
+        messageDto.setWorkOrderId(Objects.requireNonNull(workOrderId, "workOrderId must not be null"));
         messageDto.setStatus(status);
         messageDto.setWorkOrderCode(workOrderCode);
         messageDto.setReceiverIds(receiverIds);

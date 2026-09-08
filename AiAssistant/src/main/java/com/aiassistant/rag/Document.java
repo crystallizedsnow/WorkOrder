@@ -28,6 +28,13 @@ public class Document {
 
     private String sourceVersion;
 
+    /** Stable logical document and immutable revision identifiers used by incremental retrieval. */
+    private String documentId;
+
+    private String revisionId;
+
+    private String format;
+
     private String headingPath;
 
     @Builder.Default

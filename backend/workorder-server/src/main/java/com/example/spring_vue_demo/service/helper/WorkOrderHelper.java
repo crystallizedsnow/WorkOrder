@@ -170,8 +170,9 @@ public class WorkOrderHelper {
         }
     }
 
-    public Message buildMessage(WorkOrderStatusEnum status, String code, Long assignedUserId) {
+    public Message buildMessage(Long workOrderId, WorkOrderStatusEnum status, String code, Long assignedUserId) {
         Message message = new Message();
+        message.setWorkOrderId(workOrderId);
         String nextHandleType = "";
         switch (status) {
             case UNAUDITED->{
@@ -193,7 +194,7 @@ public class WorkOrderHelper {
         return message;
     }
 
-    public List<Message> buildMessages(WorkOrderStatusEnum status, String code, List<Long> receiverIds,Long senderId, boolean finished) {
+    public List<Message> buildMessages(Long workOrderId, WorkOrderStatusEnum status, String code, List<Long> receiverIds,Long senderId, boolean finished) {
         String content = "";
         switch (status) {
             case UNAUDITED->{
@@ -235,6 +236,7 @@ public class WorkOrderHelper {
         String finalContent = content;
         receiverIds.forEach(assignedUserId -> {
             Message message = new Message();
+            message.setWorkOrderId(workOrderId);
             message.setContent(finalContent);
             message.setType(status.getValue());
             message.setTypeDesc(status.getDesc());

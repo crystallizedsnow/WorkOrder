@@ -2,6 +2,8 @@ package com.example.spring_vue_demo.service.helper;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.spring_vue_demo.entity.HandleUserInfo;
+import com.example.spring_vue_demo.entity.Message;
+import com.example.spring_vue_demo.enums.WorkOrderStatusEnum;
 import com.example.spring_vue_demo.mapper.HandleUserInfoMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +30,14 @@ class WorkOrderHelperTest {
         assertThat(helper.getUnfinishedHandlerUserIds(9L)).containsExactly(21L, 22L);
 
         verify(handleUserInfoMapper).selectList(org.mockito.ArgumentMatchers.any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    void messagesKeepTheirWorkOrderAssociation() {
+        List<Message> messages = helper.buildMessages(
+                9L, WorkOrderStatusEnum.HANDLING, "WO9", List.of(21L, 22L), 7L, true);
+
+        assertThat(messages).extracting(Message::getWorkOrderId).containsExactly(9L, 9L);
     }
 
     private HandleUserInfo handler(Long orderId, Long userId) {

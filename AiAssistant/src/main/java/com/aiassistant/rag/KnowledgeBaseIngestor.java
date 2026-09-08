@@ -8,6 +8,8 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Component;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.ObjectProvider;
+import com.aiassistant.rag.manage.KnowledgeRevisionManager;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -46,6 +48,12 @@ public class KnowledgeBaseIngestor {
     @Autowired
     private KnowledgeManifestLoader manifestLoader;
 
+    @Autowired
+    private ActiveRevisionRegistry activeRevisionRegistry;
+
+    @Autowired
+    private ObjectProvider<KnowledgeRevisionManager> revisionManagers;
+
     /** 由 RagLifecycleManager 在受管线程中调用。 */
     public RagBuildResult ingest() {
         try {
@@ -57,10 +65,13 @@ public class KnowledgeBaseIngestor {
                 }
 
                 Map<String, KnowledgeSource> manifest = manifestLoader.load();
-                List<Document> documents = loadDocumentsFromClasspath(manifest);
-                if (documents.isEmpty()) {
+                List<Document> baseDocuments = loadDocumentsFromClasspath(manifest);
+                if (baseDocuments.isEmpty()) {
                     throw new IllegalStateException("未找到可信知识库文档");
                 }
+                List<Document> documents = new ArrayList<>(baseDocuments);
+                KnowledgeRevisionManager revisionManager = revisionManagers.getIfAvailable();
+                if (revisionManager != null) documents.addAll(revisionManager.revisionDocuments());
 
                 List<Document> segments = new ArrayList<>();
                 for (Document doc : documents) {
@@ -76,6 +87,9 @@ public class KnowledgeBaseIngestor {
                 List<float[]> vectors = embeddingModel.embedAll(texts);
                 String buildVersion = buildVersion(documents);
                 vectorStore.publishAll(vectors, segments, buildVersion);
+                for (Document document : baseDocuments) {
+                    activeRevisionRegistry.seed(document.getDocumentId(), document.getRevisionId());
+                }
                 log.info("知识库文档导入完成，共导入 {} 个片段", segments.size());
                 return new RagBuildResult(buildVersion, documents.size(), segments.size());
         } catch (Exception e) {
@@ -101,6 +115,9 @@ public class KnowledgeBaseIngestor {
                             .source(sourceDefinition.sourceId())
                             .sourceName(sourceDefinition.displayName())
                             .sourceVersion(sourceDefinition.version())
+                            .documentId(sourceDefinition.sourceId())
+                            .revisionId(sourceDefinition.sourceId() + "@" + sourceDefinition.version())
+                            .format("MARKDOWN")
                             .headingPath(firstHeading(content))
                             .trustLevel(sourceDefinition.trustLevel())
                             .build();
