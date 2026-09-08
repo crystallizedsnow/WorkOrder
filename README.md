@@ -18,9 +18,9 @@
 
 ```text
 浏览器 :5173 ────────────────────────────────────────┐
-                                                     │
+                                                    │
 飞书 / Web 对话 → AI Assistant :8081 → Go CLI → CLI Service :5000 ─┼→ Backend :8080 → MySQL
-                         │                           │                  ├→ RabbitMQ
+                         │                         │                  ├→ RabbitMQ
                          ├→ MongoDB（会话记忆）      │                  └→ Elasticsearch
                          ├→ Redis（会话/去重）       │                       ↑
                          └→ Elasticsearch + ONNX（RAG）                Canal ← MySQL
@@ -72,6 +72,4 @@
 - [AI 助手技术设计](技术方案文档/AiAssistant_technical_design.md)
 - [飞书渠道技术设计](技术方案文档/feishu-channel_technical_design.md)
 
-## 安全提示
 
-本地配置文件已纳入 `.gitignore`。不要将数据库密码、JWT Secret、渠道 Service Key、LLM API Key 或飞书 App Secret 提交到仓库；共享或生产环境应通过环境变量或密钥管理服务注入，并限制 Knife4j 与 Actuator 的网络暴露。
